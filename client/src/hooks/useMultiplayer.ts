@@ -2,7 +2,7 @@
 // Fun Together — Multiplayer Hook (Supabase Realtime + Colyseus)
 // Seamless dual-mode: Supabase serverless realtime + Colyseus fallback
 // ============================================================
-import { useCallback, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import * as Colyseus from 'colyseus.js';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
@@ -35,8 +35,25 @@ export function useMultiplayer() {
   const {
     setRoom, setRoomCode, setPhase,
     updateFromSchema, addFartEvent, addCollisionEvent,
-    addCheckpointEvent, setSteerX
+    addCheckpointEvent, setSteerX, setOnCollisionCallback
   } = useGameStore();
+
+  // Broadcast crash and restart to all connected peers in the room
+  useEffect(() => {
+    setOnCollisionCallback(() => {
+      if (realtimeChannel) {
+        realtimeChannel.send({
+          type: 'broadcast',
+          event: 'game_restart',
+          payload: {},
+        });
+      }
+      const room = useGameStore.getState().room ?? activeRoom;
+      room?.send('restart', {});
+    });
+
+    return () => setOnCollisionCallback(undefined);
+  }, [setOnCollisionCallback]);
 
   // Attach Colyseus room listeners
   const attachColyseusListeners = useCallback((room: Colyseus.Room<GameRoomState>) => {
@@ -325,11 +342,17 @@ export function useMultiplayer() {
     const thrustX = -Math.sin(angle) * PHYSICS.FART_IMPULSE * 0.45;
     const thrustZ = -Math.cos(angle) * PHYSICS.FART_IMPULSE * 0.55;
 
+    const nextVx = bowl.velX + thrustX;
+    const nextVz = bowl.velZ + thrustZ;
+    const currentSpeed = Math.hypot(nextVx, nextVz);
+    const clampedSpeed = Math.min(PHYSICS.MAX_SPEED, currentSpeed);
+    const scale = currentSpeed > 0.001 ? clampedSpeed / currentSpeed : 1;
+
     useGameStore.setState({
       bowl: {
         ...bowl,
-        velX: Math.max(-PHYSICS.MAX_SPEED, Math.min(PHYSICS.MAX_SPEED, bowl.velX + thrustX)),
-        velZ: Math.max(-PHYSICS.MAX_SPEED * 0.5, Math.min(PHYSICS.MAX_SPEED, bowl.velZ + thrustZ)),
+        velX: nextVx * scale,
+        velZ: nextVz * scale,
       },
     });
 

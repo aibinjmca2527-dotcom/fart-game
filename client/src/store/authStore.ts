@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import type { User } from '@supabase/supabase-js';
 
 interface AuthState {
@@ -30,11 +30,14 @@ export const useAuthStore = create<AuthState>()(
       setInitialized: (v) => set({ initialized: v }),
 
       signUp: async (email, password, displayName) => {
+        if (!isSupabaseConfigured) {
+          return "Supabase credentials are not saved in client/.env yet (or still using placeholder). Please save real credentials (Ctrl+S) and restart, or click 'Play as Guest' below!";
+        }
         set({ loading: true });
         try {
           const { data, error } = await supabase.auth.signUp({ email, password });
           if (error) return error.message;
-          if (!data.user) return 'No user returned';
+          if (!data.user) return 'No user returned from Supabase';
 
           // Create profile
           await supabase.from('profiles').upsert({
@@ -44,13 +47,20 @@ export const useAuthStore = create<AuthState>()(
           });
           return null;
         } catch (e: unknown) {
-          return String(e);
+          const msg = e instanceof Error ? e.message : String(e);
+          if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+            return "Could not reach Supabase backend. Check that VITE_SUPABASE_URL in client/.env is saved (Ctrl+S) and your project is active. Or click 'Play as Guest' below!";
+          }
+          return msg;
         } finally {
           set({ loading: false });
         }
       },
 
       signIn: async (email, password) => {
+        if (!isSupabaseConfigured) {
+          return "Supabase credentials are not saved in client/.env yet (or still using placeholder). Please save real credentials (Ctrl+S) and restart, or click 'Play as Guest' below!";
+        }
         set({ loading: true });
         try {
           const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -58,7 +68,11 @@ export const useAuthStore = create<AuthState>()(
           await get().refreshProfile();
           return null;
         } catch (e: unknown) {
-          return String(e);
+          const msg = e instanceof Error ? e.message : String(e);
+          if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+            return "Could not reach Supabase backend. Check that VITE_SUPABASE_URL in client/.env is saved (Ctrl+S) and your project is active. Or click 'Play as Guest' below!";
+          }
+          return msg;
         } finally {
           set({ loading: false });
         }

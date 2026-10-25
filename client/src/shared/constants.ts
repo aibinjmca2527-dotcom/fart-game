@@ -7,7 +7,7 @@ export const PHYSICS = {
   ANGULAR_DRAG: 0.92,
   FART_IMPULSE: 9.5,            // Snappy impulse per click for continuous farting
   FART_ANGULAR: 0.05,
-  MAX_SPEED: 18,                // Fun fast top speed
+  MAX_SPEED: 12.0,              // Strict 12 m/s maximum speed as requested
   MAX_ANGULAR: 2.2,
   MASS: 10,
   MOMENT_OF_INERTIA: 4.0,

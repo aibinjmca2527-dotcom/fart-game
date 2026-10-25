@@ -41,6 +41,31 @@
   text-shadow: 0 1px 4px #0008;
 }
 
+/* Non-blocking Auto-Restart Alert */
+.crashBanner {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(220, 38, 38, 0.92);
+  color: #fff;
+  font-weight: 800;
+  font-size: 15px;
+  padding: 8px 20px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 4px 20px rgba(220, 38, 38, 0.5), 0 0 30px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  z-index: 100;
+  animation: pulseCrash 0.4s ease-in-out infinite alternate;
+  letter-spacing: 0.5px;
+}
+
+@keyframes pulseCrash {
+  from { transform: translateX(-50%) scale(1); }
+  to { transform: translateX(-50%) scale(1.05); }
+}
+
 /* Room Code in Top Bar */
 .roomTag {
   display: flex;

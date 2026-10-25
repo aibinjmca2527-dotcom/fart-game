@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuthStore } from '../store/authStore';
+import { isSupabaseConfigured } from '../lib/supabase';
 import styles from './AuthPage.module.css';
 
 export function AuthPage() {
@@ -10,12 +11,16 @@ export function AuthPage() {
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const { signIn, signUp, loading } = useAuthStore();
-  const { supabase: _ } = { supabase: null }; // placeholder import suppressor
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setInfo('');
+
+    if (!isSupabaseConfigured) {
+      setError("Supabase credentials are not saved in client/.env yet (or still using placeholder). Please save real credentials (Ctrl+S) and restart, or click '👾 Play as Guest' below to start immediately!");
+      return;
+    }
 
     if (mode === 'signup') {
       if (!displayName.trim()) { setError('Please enter a display name.'); return; }
@@ -34,6 +39,12 @@ export function AuthPage() {
         <div className={styles.logo}>🚽</div>
         <h1 className={styles.title}>Fun Together</h1>
         <p className={styles.subtitle}>Fart-Powered Multiplayer Racing!</p>
+
+        {!isSupabaseConfigured && (
+          <div className={styles.configNotice}>
+            💡 <strong>Quick Start:</strong> Click <strong>"👾 Play as Guest"</strong> below to play all 5 levels right now! To enable email accounts, save your Supabase URL & Key in <code>client/.env</code>.
+          </div>
+        )}
 
         <div className={styles.tabs}>
           <button className={`${styles.tab} ${mode === 'login' ? styles.activeTab : ''}`} onClick={() => setMode('login')}>Log In</button>

@@ -12,7 +12,7 @@ export function GameHUD({ myPlayerId }: GameHUDProps) {
   const {
     phase, countdownRemaining, elapsedMs, levelId,
     players, currentCheckpoint, bowl, roomCode, isCrashed,
-    hostId, restartCurrentLevel,
+    hostId, restartCurrentLevel, crashToast, crashToastMs,
   } = useGameStore();
   const { sendFart, sendSteer, sendReady, sendStart, sendRestart, sendNextLevel, leaveRoom } = useMultiplayer();
 
@@ -133,6 +133,13 @@ export function GameHUD({ myPlayerId }: GameHUDProps) {
           {speed.toFixed(1)} m/s
         </div>
       </div>
+
+      {/* Non-blocking Auto-Restart Notification */}
+      {crashToastMs > 0 && (
+        <div className={styles.crashBanner}>
+          💥 {crashToast} — Level Auto-Restarted!
+        </div>
+      )}
 
       {/* Checkpoint progress */}
       <div className={styles.checkpoints}>

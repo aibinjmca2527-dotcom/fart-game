@@ -69,6 +69,9 @@ interface GameState {
   fartEvents: FartEvent[];
   collisionEvents: { obstacleId: string; posX: number; posZ: number }[];
   checkpointEvents: { id: string; index: number }[];
+  crashToast: string;
+  crashToastMs: number;
+  onCollisionCallback?: () => void;
 
   setRoom: (r: Colyseus.Room | null) => void;
   setRoomCode: (code: string) => void;
@@ -86,6 +89,8 @@ interface GameState {
   stepLocalPhysics: (dt: number) => void;
   nextLevel: () => void;
   restartCurrentLevel: () => void;
+  triggerCrashAndAutoRestart: (reason?: string) => void;
+  setOnCollisionCallback: (cb: (() => void) | undefined) => void;
   disconnect: () => void;
 }
 
@@ -107,19 +112,52 @@ export const useGameStore = create<GameState>((set, get) => ({
   currentCheckpoint: -1,
   finished: false,
   isCrashed: false,
-  spawnImmunityMs: 2000,
+  spawnImmunityMs: 1500,
   hostId: '',
   mySessionId: '',
   steerX: 0,
   fartEvents: [],
   collisionEvents: [],
   checkpointEvents: [],
+  crashToast: '',
+  crashToastMs: 0,
+  onCollisionCallback: undefined,
 
   setRoom: (r) => set({ room: r, mySessionId: r?.sessionId ?? '' }),
   setRoomCode: (code) => set({ roomCode: code }),
   setPhase: (phase) => set({ phase, isCrashed: phase === 'failed' }),
   setLevelId: (levelId) => set({ levelId }),
   setSteerX: (dir) => set({ steerX: Math.max(-1, Math.min(1, dir)) }),
+  setOnCollisionCallback: (cb) => set({ onCollisionCallback: cb }),
+
+  // Instant crash and automatic restart on the same level without blocking modals!
+  triggerCrashAndAutoRestart: (reason = 'Obstacle Collision') => {
+    soundManager.playCrash();
+
+    // Clear farting states on all players
+    const players = new Map(get().players);
+    players.forEach((p, k) => {
+      players.set(k, { ...p, isFarting: false, fartCooldownMs: 0 });
+    });
+
+    set({
+      bowl: { ...defaultBowl },
+      predictedBowl: { ...defaultBowl },
+      elapsedMs: 0,
+      currentCheckpoint: -1,
+      steerX: 0,
+      isCrashed: true,
+      spawnImmunityMs: 1200,
+      crashToast: reason,
+      crashToastMs: 1600,
+      phase: 'playing', // Immediately play on same level!
+      players,
+      fartEvents: [],
+    });
+
+    // Notify multiplayer hook to broadcast restart across all connected peers!
+    get().onCollisionCallback?.();
+  },
 
   // Move player around the perimeter of the circular tube
   movePlayerAngle: (playerId, deltaAngle) => {
@@ -207,6 +245,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     const newElapsed = elapsedMs + dt * 1000;
     const elapsedSec = newElapsed / 1000;
 
+    // Tick toast timer
+    const curToastMs = get().crashToastMs;
+    if (curToastMs > 0) {
+      set({ crashToastMs: Math.max(0, curToastMs - dt * 1000) });
+    }
+
     // Tick respawn immunity
     if (spawnImmunityMs > 0) {
       set({ spawnImmunityMs: Math.max(0, spawnImmunityMs - dt * 1000) });
@@ -231,23 +275,33 @@ export const useGameStore = create<GameState>((set, get) => ({
     newBowl.velX *= 0.965;
     newBowl.velZ *= 0.985;
 
+    // Strict maximum speed of 12.0 m/s as requested
+    const currentSpeed = Math.hypot(newBowl.velX, newBowl.velZ);
+    if (currentSpeed > 12.0) {
+      const scale = 12.0 / currentSpeed;
+      newBowl.velX *= scale;
+      newBowl.velZ *= scale;
+    }
+
     // Advance position
     newBowl.posX += newBowl.velX * dt;
     newBowl.posZ += newBowl.velZ * dt;
     newBowl.angle += newBowl.angularVelocity * dt;
 
-    // Side banks clamp along the CURVED river flume (bouncing off sawtooth bumpers)
-    const maxHalfW = 4.8;
+    // ── Check Side Banks Collision ──
+    // Touching the side bank immediately ends the run and auto-restarts the level!
+    const maxHalfW = 4.6;
     const leftLimit = currentCenterlineX - maxHalfW;
     const rightLimit = currentCenterlineX + maxHalfW;
-    if (newBowl.posX < leftLimit) {
-      newBowl.posX = leftLimit;
-      newBowl.velX = Math.abs(newBowl.velX) * 0.45;
-      soundManager.playSplash();
-    } else if (newBowl.posX > rightLimit) {
-      newBowl.posX = rightLimit;
-      newBowl.velX = -Math.abs(newBowl.velX) * 0.45;
-      soundManager.playSplash();
+    if (spawnImmunityMs <= 0 && newBowl.posZ > 12) {
+      if (newBowl.posX <= leftLimit || newBowl.posX >= rightLimit) {
+        get().triggerCrashAndAutoRestart('Hit the Side Bank!');
+        return;
+      }
+    } else {
+      // Soft clamp during spawn immunity
+      if (newBowl.posX < leftLimit) newBowl.posX = leftLimit;
+      if (newBowl.posX > rightLimit) newBowl.posX = rightLimit;
     }
 
     // ── Update All Obstacles (Circular Orbiting Motion & Spinning) ──
@@ -284,35 +338,34 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
 
     // ── Check Obstacle Collisions ──
-    // Immunity protects first 3.0 seconds and only check obstacles well past the START arch (z > 35)
-    if (spawnImmunityMs <= 0 && newBowl.posZ > 35) {
-      const tubeRadius = 0.8; // Realistic solid core of the raft tube
+    // Checks as soon as boat moves past spawn (z > 12)
+    if (spawnImmunityMs <= 0 && newBowl.posZ > 12) {
+      const tubeRadius = 1.35; // outer visual radius of the raft
       for (let i = 0; i < updatedObstacles.length; i++) {
         const liveObs = updatedObstacles[i];
         const cfg = level.obstacles[i];
         if (!cfg) continue;
 
-        // Gates: doorway clearance check (only check if tube collides with the outer timber posts)
+        // Gates: doorway posts collision
         if (cfg.kind === 'gate_pair' || cfg.kind === 'narrow_passage') {
           const gateW = cfg.width ?? 6.5;
-          const postRadius = 0.35;
+          const postRadius = 0.45;
           const leftPostX = liveObs.x - (gateW / 2 + 0.4);
           const rightPostX = liveObs.x + (gateW / 2 + 0.4);
           const dz = Math.abs(newBowl.posZ - liveObs.z);
 
-          if (dz < 1.0) {
+          if (dz < 1.2) {
             const distLeft = Math.hypot(newBowl.posX - leftPostX, dz);
             const distRight = Math.hypot(newBowl.posX - rightPostX, dz);
             if (distLeft < tubeRadius + postRadius || distRight < tubeRadius + postRadius) {
-              soundManager.playCrash();
-              set({ bowl: newBowl, obstacles: updatedObstacles, phase: 'failed', isCrashed: true });
+              get().triggerCrashAndAutoRestart('Hit Gate Post!');
               return;
             }
           }
           continue;
         }
 
-        // Spinning gate: rotating line segment collision (bar thickness ~0.35)
+        // Spinning gate collision
         if (cfg.kind === 'spinning_gate') {
           const halfW = (cfg.width ?? 8) / 2;
           const rot = liveObs.rotation;
@@ -320,27 +373,21 @@ export const useGameStore = create<GameState>((set, get) => ({
           const dz = newBowl.posZ - liveObs.z;
           const localX = dx * Math.cos(-rot) - dz * Math.sin(-rot);
           const localZ = dx * Math.sin(-rot) + dz * Math.cos(-rot);
-          if (Math.abs(localZ) < (tubeRadius + 0.2) && Math.abs(localX) < (halfW - 0.2)) {
-            soundManager.playCrash();
-            set({ bowl: newBowl, obstacles: updatedObstacles, phase: 'failed', isCrashed: true });
+          if (Math.abs(localZ) < (tubeRadius + 0.3) && Math.abs(localX) < (halfW + tubeRadius * 0.4)) {
+            get().triggerCrashAndAutoRestart('Hit Spinning Gate!');
             return;
           }
           continue;
         }
 
         // Circular Obstacles (orbiting hazards, static barrels, rocks, moving barriers)
-        const obsRadius = cfg.radius ?? (cfg.kind === 'static_barrel' ? 0.55 : cfg.kind === 'static_rock' ? 0.75 : 0.7);
+        const obsRadius = cfg.radius ?? (cfg.kind === 'static_barrel' ? 0.6 : cfg.kind === 'static_rock' ? 0.8 : 0.75);
         const dx = newBowl.posX - liveObs.x;
         const dz = newBowl.posZ - liveObs.z;
-        const dist = Math.sqrt(dx * dx + dz * dz);
+        const dist = Math.hypot(dx, dz);
         if (dist < tubeRadius + obsRadius) {
-          soundManager.playCrash();
-          set({
-            bowl: newBowl,
-            obstacles: updatedObstacles,
-            phase: 'failed',
-            isCrashed: true,
-          });
+          const label = cfg.kind === 'orbiting_hazard' ? 'Orbiting Hazard Buoy' : cfg.kind === 'static_barrel' ? 'Barrel' : 'Rock';
+          get().triggerCrashAndAutoRestart(`Hit ${label}!`);
           return;
         }
       }
@@ -393,25 +440,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // Restart current level
   restartCurrentLevel: () => {
-    // Clear all player farting states
-    const players = new Map(get().players);
-    players.forEach((p, k) => {
-      players.set(k, { ...p, isFarting: false, fartCooldownMs: 0 });
-    });
-
-    set({
-      phase: 'playing',
-      finished: false,
-      isCrashed: false,
-      spawnImmunityMs: 3000,
-      elapsedMs: 0,
-      steerX: 0,
-      currentCheckpoint: -1,
-      players,
-      fartEvents: [],
-      bowl: { ...defaultBowl },
-      predictedBowl: { ...defaultBowl },
-    });
+    get().triggerCrashAndAutoRestart('Level Restarted');
   },
 
   disconnect: () => {
