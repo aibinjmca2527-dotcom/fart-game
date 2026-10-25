@@ -74,6 +74,7 @@ interface GameState {
   crashToast: string;
   crashToastMs: number;
   onCollisionCallback?: () => void;
+  onLevelFinishCallback?: () => void;
 
   setRoom: (r: Colyseus.Room | null) => void;
   setRoomCode: (code: string) => void;
@@ -90,10 +91,11 @@ interface GameState {
   addCheckpointEvent: (e: { id: string; index: number }) => void;
   clearCheckpointEvents: () => void;
   stepLocalPhysics: (dt: number) => void;
-  nextLevel: () => void;
+  nextLevel: (targetLevelId?: number) => void;
   restartCurrentLevel: () => void;
   triggerCrashAndAutoRestart: (reason?: string) => void;
   setOnCollisionCallback: (cb: (() => void) | undefined) => void;
+  setOnLevelFinishCallback: (cb: (() => void) | undefined) => void;
   disconnect: () => void;
 }
 
@@ -126,14 +128,32 @@ export const useGameStore = create<GameState>((set, get) => ({
   crashToast: '',
   crashToastMs: 0,
   onCollisionCallback: undefined,
+  onLevelFinishCallback: undefined,
 
   setRoom: (r) => set({ room: r, mySessionId: r?.sessionId ?? '' }),
   setRoomCode: (code) => set({ roomCode: code }),
   setPhase: (phase) => set({ phase, isCrashed: phase === 'failed' }),
-  setLevelId: (levelId) => set({ levelId }),
+  setLevelId: (levelId) => {
+    const lvl = LEVELS.find((l) => l.id === levelId) ?? LEVELS[0];
+    const initialObstacles: ObstacleInfo[] = lvl.obstacles.map((obs) => ({
+      id: obs.id,
+      x: getTrackCenterX(levelId, obs.z) + obs.x,
+      z: obs.z,
+      rotation: obs.rotation ?? 0,
+      active: true,
+    }));
+    set({
+      levelId,
+      obstacles: initialObstacles,
+      bowl: { ...defaultBowl },
+      predictedBowl: { ...defaultBowl },
+      currentCheckpoint: -1,
+    });
+  },
   setIsHost: (isHost) => set({ isHost }),
   setSteerX: (dir) => set({ steerX: Math.max(-1, Math.min(1, dir)) }),
   setOnCollisionCallback: (cb) => set({ onCollisionCallback: cb }),
+  setOnLevelFinishCallback: (cb) => set({ onLevelFinishCallback: cb }),
 
   // Instant crash and automatic restart on the same level without blocking modals!
   triggerCrashAndAutoRestart: (reason = 'Obstacle Collision') => {
@@ -271,6 +291,7 @@ export const useGameStore = create<GameState>((set, get) => ({
     const isAuthoritative = !roomCode || isHost;
 
     if (!isAuthoritative) {
+      const level = LEVELS.find((l) => l.id === levelId) ?? LEVELS[0];
       // Non-host guest: smoothly dead-reckon raft position using latest velocity from host
       const predictedBowl = { ...bowl };
       predictedBowl.posX += predictedBowl.velX * dt;
@@ -285,6 +306,19 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
       if (predictedBowl.posX > currentCenterlineX + maxSideDistance) {
         predictedBowl.posX = currentCenterlineX + maxSideDistance;
+      }
+
+      // Check Finish Line for Guest!
+      if (predictedBowl.posZ >= level.finishZ && !get().finished) {
+        soundManager.playFinish();
+        set({ finished: true, phase: 'finished' });
+      }
+
+      // Stop raft from floating past the finish area into the sky!
+      if (predictedBowl.posZ > level.finishZ + 8) {
+        predictedBowl.posZ = level.finishZ + 8;
+        predictedBowl.velZ = 0;
+        predictedBowl.velX *= 0.9;
       }
 
       // Allow local guest steering to rotate character around tube
@@ -494,6 +528,13 @@ export const useGameStore = create<GameState>((set, get) => ({
       }
     }
 
+    // Stop raft from floating past the finish area into the sky!
+    if (newBowl.posZ > level.finishZ + 8) {
+      newBowl.posZ = level.finishZ + 8;
+      newBowl.velZ = 0;
+      newBowl.velX *= 0.9;
+    }
+
     // Check Finish Line -> LEVEL COMPLETE!
     if (newBowl.posZ >= level.finishZ && !get().finished) {
       soundManager.playFinish();
@@ -503,6 +544,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         saveTeamLevel(teamSig, levelId + 1);
       }
       set({ finished: true, phase: 'finished', obstacles: updatedObstacles });
+      get().onLevelFinishCallback?.();
       return;
     }
 
@@ -515,14 +557,24 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   // Advance to next level automatically
-  nextLevel: () => {
+  nextLevel: (targetLevelId?: number) => {
     const curLevel = get().levelId;
-    const next = curLevel < LEVELS.length ? curLevel + 1 : 1;
+    const next = targetLevelId ?? (curLevel < LEVELS.length ? curLevel + 1 : 1);
     saveSoloMaxUnlockedLevel(curLevel);
     const teamSig = getTeamSignature([...get().players.values()].map((p) => p.displayName));
     if (teamSig) {
       saveTeamLevel(teamSig, next);
     }
+
+    const nextLvlConfig = LEVELS.find((l) => l.id === next) ?? LEVELS[0];
+    const initialObstacles: ObstacleInfo[] = nextLvlConfig.obstacles.map((obs) => ({
+      id: obs.id,
+      x: getTrackCenterX(next, obs.z) + obs.x,
+      z: obs.z,
+      rotation: obs.rotation ?? 0,
+      active: true,
+    }));
+
     set({
       levelId: next,
       phase: 'playing',
@@ -534,6 +586,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       currentCheckpoint: -1,
       bowl: { ...defaultBowl },
       predictedBowl: { ...defaultBowl },
+      obstacles: initialObstacles,
     });
   },
 

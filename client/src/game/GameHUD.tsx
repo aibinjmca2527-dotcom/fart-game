@@ -3,6 +3,7 @@ import { useGameStore } from '../store/gameStore';
 import { useMultiplayer } from '../hooks/useMultiplayer';
 import styles from './GameHUD.module.css';
 import { LEVELS } from '../shared/levels';
+import { getTeamSignature, getSavedTeamLevel, getSoloMaxUnlockedLevel } from '../lib/teamProgression';
 
 interface GameHUDProps {
   myPlayerId: string;
@@ -14,7 +15,7 @@ export function GameHUD({ myPlayerId }: GameHUDProps) {
     players, currentCheckpoint, bowl, roomCode, isCrashed,
     hostId, restartCurrentLevel, crashToast, crashToastMs,
   } = useGameStore();
-  const { sendFart, sendSteer, sendReady, sendStart, sendRestart, sendNextLevel, leaveRoom } = useMultiplayer();
+  const { sendFart, sendSteer, sendReady, sendStart, sendRestart, sendNextLevel, sendSelectLevel, leaveRoom } = useMultiplayer();
 
   const level = LEVELS.find((l) => l.id === levelId) ?? LEVELS[0];
   const myPlayer = players.get(myPlayerId);
@@ -161,6 +162,10 @@ export function GameHUD({ myPlayerId }: GameHUDProps) {
   // Lobby Ready & Start Logic:
   // Requires at least 2 players for custom multiplayer rooms!
   const playerList = [...players.values()];
+  const teamSig = getTeamSignature(playerList.map((p) => p.displayName));
+  const maxTeamLevel = playerList.length >= 2 && teamSig
+    ? getSavedTeamLevel(teamSig)
+    : (playerList.length < 2 ? getSoloMaxUnlockedLevel() : 1);
   const isMultiplayerRoom = Boolean(roomCode);
   const storeIsHost = useGameStore((s) => s.isHost);
   const isHost = storeIsHost || (myPlayerId === hostId) || (myPlayer?.seatIndex === 0);
@@ -173,41 +178,74 @@ export function GameHUD({ myPlayerId }: GameHUDProps) {
 
   return (
     <div className={styles.hud}>
-      {/* Top bar */}
-      <div className={styles.topBar}>
-        <div className={styles.levelTag}>
-          Level {levelId}: {level.name}
-        </div>
-
-        {/* Room Code Badge */}
-        {roomCode && (
-          <div
-            className={styles.roomTag}
-            onClick={() => copyRoomCode(roomCode)}
-            title="Click to copy Room Code"
+      {/* Sleek, Properly Aligned Top Header (Never cuts off or overlaps on mobile!) */}
+      <div className={styles.topHeader}>
+        {/* Left: Menu/Pause Button + Course Info */}
+        <div className={styles.headerLeft}>
+          <button
+            className={styles.menuBtn}
+            onClick={() => setShowPauseModal(true)}
+            title="Open Game Menu / Pause"
           >
-            <span className={styles.roomTagLabel}>Room:</span>
-            <span className={styles.roomCodeBadge}>{roomCode}</span>
-            <span className={styles.copyMiniBtn}>{copied ? 'Copied!' : '📋'}</span>
+            <span className={styles.menuIcon}>⏸️</span>
+            <span className={styles.menuText}>Menu</span>
+          </button>
+          <div className={styles.levelBadge} title={`Level ${levelId}: ${level.name}`}>
+            <span className={styles.levelTagNum}>Lvl {levelId}</span>
+            <span className={styles.levelTagName}>{level.name}</span>
           </div>
-        )}
-
-        <div className={styles.timer}>
-          ⏱ {formatTime(elapsedMs)}
         </div>
 
-        <div className={styles.speedometer}>
-          {speed.toFixed(1)} m/s
+        {/* Center: Digital Timer + Room Pill + Checkpoints */}
+        <div className={styles.headerCenter}>
+          <div className={styles.timerBadge}>
+            ⏱ {formatTime(elapsedMs)}
+          </div>
+          {roomCode && (
+            <button
+              className={styles.roomBadge}
+              onClick={() => copyRoomCode(roomCode)}
+              title="Click to copy Room Code"
+            >
+              <span className={styles.roomPrefix}>Room:</span>
+              <span className={styles.roomCodeText}>{roomCode}</span>
+              <span className={styles.roomCopyIcon}>{copied ? '✓' : '📋'}</span>
+            </button>
+          )}
+          <div className={styles.checkpointsRow}>
+            {level.checkpoints.map((cp, i) => (
+              <span
+                key={cp.id}
+                className={`${styles.cpPip} ${i <= currentCheckpoint ? styles.cpPipDone : ''}`}
+              />
+            ))}
+            <span className={styles.cpFlag}>🏁</span>
+          </div>
         </div>
 
-        {/* Top-corner Exit Game Button */}
-        <button
-          className={styles.exitBtn}
-          onClick={() => setShowPauseModal(true)}
-          title="Exit Game"
-        >
-          🚪 Exit
-        </button>
+        {/* Right: Speedometer + Compact Player Chips */}
+        <div className={styles.headerRight}>
+          <div className={styles.speedBadge}>
+            <span className={styles.speedNumber}>{speed.toFixed(1)}</span>
+            <span className={styles.speedLabel}>m/s</span>
+          </div>
+          <div className={styles.headerPlayerList}>
+            {playerList.map((p) => (
+              <div
+                key={p.id}
+                className={`${styles.playerMiniChip} ${p.id === myPlayerId ? styles.myMiniChip : ''}`}
+                title={p.displayName}
+              >
+                <span className={styles.miniChipEmoji}>
+                  {ANIMAL_EMOJIS[p.seatIndex % 4]}
+                </span>
+                <span className={styles.miniChipName}>{p.displayName}</span>
+                {p.isFarting && <span className={styles.miniChipFart}>💨</span>}
+                {!p.connected && <span className={styles.miniChipOffline}>⚡</span>}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Non-blocking Auto-Restart Notification */}
@@ -216,34 +254,6 @@ export function GameHUD({ myPlayerId }: GameHUDProps) {
           💥 {crashToast} — Level Auto-Restarted!
         </div>
       )}
-
-      {/* Checkpoint progress */}
-      <div className={styles.checkpoints}>
-        {level.checkpoints.map((cp, i) => (
-          <div
-            key={cp.id}
-            className={`${styles.cpDot} ${i <= currentCheckpoint ? styles.cpDone : ''}`}
-          />
-        ))}
-        <div className={`${styles.cpDot} ${styles.cpFinish}`}>🏁</div>
-      </div>
-
-      {/* Players list */}
-      <div className={styles.playerList}>
-        {playerList.map((p) => (
-          <div
-            key={p.id}
-            className={`${styles.playerChip} ${p.id === myPlayerId ? styles.myChip : ''}`}
-          >
-            <span className={styles.seatEmoji}>
-              {ANIMAL_EMOJIS[p.seatIndex % 4]}
-            </span>
-            {p.displayName}
-            {p.isFarting && <span className={styles.fartIcon}>💨</span>}
-            {!p.connected && <span className={styles.offlineIcon}>⚡</span>}
-          </div>
-        ))}
-      </div>
 
       {/* Countdown overlay */}
       {phase === 'countdown' && (
@@ -258,19 +268,50 @@ export function GameHUD({ myPlayerId }: GameHUDProps) {
           <h2 className={styles.lobbyTitle}>🚽 River Raft Party</h2>
 
           {/* Level & Team Continuation Badge */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-            <span style={{ color: '#FFD700', fontSize: '18px', fontWeight: 800 }}>
-              Course: Level {levelId} — {level.name}
-            </span>
+          <div className={styles.lobbyCourseContainer}>
+            <div className={styles.lobbyCourseHeading}>
+              Course: <span style={{ color: '#FFD700' }}>Level {levelId} — {level.name}</span>
+            </div>
+
+            {/* Squad status message */}
             {playerList.length >= 2 ? (
-              <div className={levelId > 1 ? styles.returningBadge : styles.newTeamBadge}>
-                {levelId > 1
-                  ? `🔄 Returning Squad! Continuing from Level ${levelId}`
-                  : `✨ New Crew Member! Starting at Level 1`}
+              <div className={maxTeamLevel > 1 ? styles.returningBadge : styles.newTeamBadge}>
+                {maxTeamLevel > 1
+                  ? `🔄 Returning Squad! Highest Achieved: Level ${maxTeamLevel}`
+                  : `✨ New Crew Member Joined! Starting at Level 1`}
               </div>
             ) : (
               <div className={styles.newTeamBadge}>
                 ⏳ Waiting for at least 1 friend to connect...
+              </div>
+            )}
+
+            {/* In-Lobby Level Selection Pills */}
+            {maxTeamLevel > 1 && (
+              <div className={styles.lobbyLevelSelectBox}>
+                <span className={styles.lobbyLevelSelectLabel}>
+                  {isHost ? 'Select Level to Play:' : 'Unlocked Levels:'}
+                </span>
+                <div className={styles.lobbyLevelPills}>
+                  {LEVELS.slice(0, maxTeamLevel).map((lvl) => (
+                    <button
+                      key={lvl.id}
+                      className={`${styles.lobbyLevelPill} ${levelId === lvl.id ? styles.lobbyLevelPillActive : ''}`}
+                      disabled={!isHost}
+                      onClick={() => {
+                        if (isHost) sendSelectLevel(lvl.id);
+                      }}
+                      title={isHost ? `Switch course to Level ${lvl.id}: ${lvl.name}` : `Level ${lvl.id}`}
+                    >
+                      Level {lvl.id} {levelId === lvl.id && '✓'}
+                    </button>
+                  ))}
+                </div>
+                {!isHost && (
+                  <span className={styles.lobbyLevelSelectHint}>
+                    (Host selects course level)
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -432,6 +473,15 @@ export function GameHUD({ myPlayerId }: GameHUDProps) {
               onClick={() => setShowPauseModal(false)}
             >
               ▶ Resume Game
+            </button>
+            <button
+              className={styles.restartBtn}
+              onClick={() => {
+                setShowPauseModal(false);
+                handleRetry();
+              }}
+            >
+              🔁 Restart Level
             </button>
             <button
               className={styles.exitConfirmBtn}

@@ -7,51 +7,265 @@
   z-index: 10;
 }
 
-/* Top bar */
-.topBar {
+/* Sleek Top Header (Never cuts off or overlaps on mobile!) */
+.topHeader {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  padding: 12px 18px;
-  background: linear-gradient(180deg, rgba(0,0,0,0.65) 0%, transparent 100%);
+  padding: 8px 12px;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.85) 0%, rgba(15, 23, 42, 0.4) 70%, transparent 100%);
   pointer-events: all;
-  gap: 12px;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.levelTag {
+/* Left Header: Menu Button + Course Badge */
+.headerLeft {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  flex-shrink: 0;
+  max-width: 110px;
+}
+
+.menuBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(30, 41, 59, 0.85);
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
   color: #fff;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 800;
-  text-shadow: 0 2px 6px #000a;
-  letter-spacing: 0.5px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  pointer-events: all;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
 
-.timer {
-  color: #FFD700;
-  font-size: 22px;
+.menuBtn:hover {
+  background: rgba(51, 65, 85, 0.95);
+  border-color: #38bdf8;
+  transform: translateY(-1px);
+}
+
+.menuIcon {
+  font-size: 13px;
+}
+
+.menuText {
+  letter-spacing: 0.3px;
+}
+
+.levelBadge {
+  display: flex;
+  flex-direction: column;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 2px 7px;
+  max-width: 110px;
+  overflow: hidden;
+}
+
+.levelTagNum {
+  color: #38bdf8;
+  font-size: 11px;
   font-weight: 900;
-  text-shadow: 0 2px 8px #0008;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.levelTagName {
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Center Header: Timer, Room Pill, Checkpoints */
+.headerCenter {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.timerBadge {
+  color: #FFD700;
+  font-size: 20px;
+  font-weight: 900;
+  font-family: monospace;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8), 0 0 12px rgba(255, 215, 0, 0.4);
+  letter-spacing: 1px;
+}
+
+.roomBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1.5px solid rgba(255, 215, 0, 0.5);
+  border-radius: 999px;
+  padding: 2px 9px;
+  cursor: pointer;
+  pointer-events: all;
+  transition: all 0.15s ease;
+}
+
+.roomBadge:hover {
+  background: rgba(15, 23, 42, 0.95);
+  border-color: #FFD700;
+}
+
+.roomPrefix {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.roomCodeText {
+  color: #FFD700;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 1px;
   font-family: monospace;
 }
 
-.speedometer {
-  color: #70D6FF;
+.roomCopyIcon {
+  color: #FFD700;
+  font-size: 11px;
+}
+
+.checkpointsRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.cpPip {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  border: 1.5px solid rgba(255, 255, 255, 0.5);
+  transition: all 0.3s ease;
+}
+
+.cpPipDone {
+  background: #FFD700;
+  border-color: #FFB800;
+  box-shadow: 0 0 6px #FFD700;
+}
+
+.cpFlag {
   font-size: 14px;
-  font-weight: 800;
-  text-shadow: 0 1px 4px #0008;
+  line-height: 1;
+}
+
+/* Right Header: Speedometer + Player List */
+.headerRight {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  flex-shrink: 0;
+  max-width: 120px;
+}
+
+.speedBadge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(112, 214, 255, 0.3);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.speedNumber {
+  color: #70D6FF;
+  font-size: 13px;
+  font-weight: 900;
+  font-family: monospace;
+}
+
+.speedLabel {
+  color: rgba(112, 214, 255, 0.7);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.headerPlayerList {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+}
+
+.playerMiniChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  max-width: 110px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.myMiniChip {
+  border-color: #10B981;
+  background: rgba(16, 185, 129, 0.25);
+  color: #a7f3d0;
+}
+
+.miniChipEmoji {
+  font-size: 12px;
+}
+
+.miniChipName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 55px;
+}
+
+.miniChipFart {
+  font-size: 11px;
+}
+
+.miniChipOffline {
+  color: #ef4444;
+  font-size: 10px;
 }
 
 /* Non-blocking Auto-Restart Alert */
 .crashBanner {
   position: absolute;
-  top: 64px;
+  top: 72px;
   left: 50%;
   transform: translateX(-50%);
   background: rgba(220, 38, 38, 0.92);
   color: #fff;
   font-weight: 800;
-  font-size: 15px;
-  padding: 8px 20px;
+  font-size: 14px;
+  padding: 7px 18px;
   border-radius: 999px;
   border: 1.5px solid rgba(255, 255, 255, 0.4);
   box-shadow: 0 4px 20px rgba(220, 38, 38, 0.5), 0 0 30px rgba(0, 0, 0, 0.4);
@@ -59,31 +273,12 @@
   z-index: 100;
   animation: pulseCrash 0.4s ease-in-out infinite alternate;
   letter-spacing: 0.5px;
+  white-space: nowrap;
 }
 
 @keyframes pulseCrash {
   from { transform: translateX(-50%) scale(1); }
   to { transform: translateX(-50%) scale(1.05); }
-}
-
-/* Exit / Menu Button in Top Bar */
-.exitBtn {
-  background: rgba(239, 68, 68, 0.2);
-  border: 1px solid rgba(239, 68, 68, 0.45);
-  color: #ff9999;
-  font-size: 13px;
-  font-weight: 800;
-  padding: 6px 14px;
-  border-radius: 999px;
-  cursor: pointer;
-  pointer-events: all;
-  transition: all 0.2s;
-}
-
-.exitBtn:hover {
-  background: rgba(239, 68, 68, 0.4);
-  color: #fff;
-  border-color: #ef4444;
 }
 
 /* Pause / Exit Modal */
@@ -140,6 +335,23 @@
 }
 
 .resumeBtn:hover {
+  transform: translateY(-2px);
+}
+
+.restartBtn {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  padding: 12px;
+  border: none;
+  border-radius: 50px;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(245, 158, 11, 0.35);
+  transition: transform 0.15s;
+}
+
+.restartBtn:hover {
   transform: translateY(-2px);
 }
 
@@ -342,6 +554,80 @@
   font-weight: 700;
   padding: 6px 16px;
   border-radius: 999px;
+}
+
+.lobbyCourseContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 90%;
+  max-width: 440px;
+}
+
+.lobbyCourseHeading {
+  font-size: 17px;
+  font-weight: 800;
+  color: #ffffff;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+
+.lobbyLevelSelectBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1.5px solid rgba(255, 215, 0, 0.35);
+  border-radius: 16px;
+  padding: 10px 16px;
+  margin-top: 4px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.lobbyLevelSelectLabel {
+  font-size: 13px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.lobbyLevelPills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+
+.lobbyLevelPill {
+  background: rgba(30, 41, 59, 0.85);
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+  font-weight: 800;
+  padding: 6px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.lobbyLevelPill:hover:not(:disabled) {
+  border-color: #FFD700;
+  color: #FFD700;
+  transform: translateY(-1px);
+}
+
+.lobbyLevelPillActive {
+  background: linear-gradient(135deg, #FFD700, #F59E0B);
+  border-color: #FFD700;
+  color: #000;
+  font-weight: 900;
+  box-shadow: 0 0 12px rgba(255, 215, 0, 0.5);
+}
+
+.lobbyLevelSelectHint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .lobbyCodeCard {

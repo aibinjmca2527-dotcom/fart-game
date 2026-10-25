@@ -276,27 +276,27 @@ export function Dashboard({ onEnterGame }: DashboardProps) {
           {view === 'create' && (
             <div className={styles.panelView}>
               <h2 className={styles.panelTitle}>🎮 Create Party</h2>
-              <p className={styles.panelSub}>Choose your course, then click Create Room to invite friends.</p>
+              <p className={styles.panelSub}>
+                Start a party room and invite your friends. Your squad's highest achieved level will automatically load in the lobby!
+              </p>
 
               {!createdRoomCode ? (
                 <>
-                  <div className={styles.levelSelector}>
-                    {LEVELS.map((lvl, i) => {
-                      const isUnlocked = lvl.id <= maxUnlockedLevel;
-                      return (
-                        <button
-                          key={lvl.id}
-                          disabled={!isUnlocked}
-                          className={`${styles.lvlBtn} ${selectedLevel === lvl.id ? styles.lvlSelected : ''} ${!isUnlocked ? styles.lvlBtnLocked : ''}`}
-                          onClick={() => {
-                            if (isUnlocked) setSelectedLevel(lvl.id);
-                          }}
-                          title={isUnlocked ? lvl.name : `Beat Level ${lvl.id - 1} to unlock`}
-                        >
-                          {isUnlocked ? LEVEL_EMOJIS[i] : '🔒'} {lvl.name} {!isUnlocked && '(Locked)'}
-                        </button>
-                      );
-                    })}
+                  <div style={{
+                    background: 'rgba(15, 23, 42, 0.65)',
+                    border: '1.5px solid rgba(255, 215, 0, 0.35)',
+                    borderRadius: '16px',
+                    padding: '24px 20px',
+                    textAlign: 'center',
+                    marginBottom: '20px',
+                  }}>
+                    <div style={{ fontSize: '40px', marginBottom: '8px' }}>🚽💨</div>
+                    <h3 style={{ color: '#FFD700', fontSize: '18px', margin: '0 0 6px 0', fontWeight: 800 }}>
+                      Automatic Squad Level Continuation
+                    </h3>
+                    <p style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: '13px', margin: 0, lineHeight: 1.5 }}>
+                      When your squad joins, your highest achieved level will automatically be loaded. The host can also select any earlier unlocked level right in the lobby!
+                    </p>
                   </div>
 
                   {error && <div className={styles.errorMsg}>{error}</div>}

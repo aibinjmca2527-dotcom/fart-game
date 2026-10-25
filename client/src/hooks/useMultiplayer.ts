@@ -88,23 +88,26 @@ export function useMultiplayer() {
       },
     });
 
+    let hasAutoSelectedTeamLevel = false;
+
     const evaluateTeamLevel = (playersMap: Map<string, PlayerInfo>) => {
       if (playersMap.size >= 2) {
         const names = Array.from(playersMap.values()).map((p) => p.displayName);
         const teamSig = getTeamSignature(names);
         if (teamSig) {
           const savedLevel = getSavedTeamLevel(teamSig);
-          useGameStore.setState({ levelId: savedLevel });
-          if (isHost) {
-            channel.send({
-              type: 'broadcast',
-              event: 'sync_team_level',
-              payload: { levelId: savedLevel, teamSig },
-            });
+          if (!hasAutoSelectedTeamLevel) {
+            hasAutoSelectedTeamLevel = true;
+            useGameStore.getState().setLevelId(savedLevel);
+            if (isHost) {
+              channel.send({
+                type: 'broadcast',
+                event: 'sync_team_level',
+                payload: { levelId: savedLevel, teamSig },
+              });
+            }
           }
         }
-      } else {
-        useGameStore.setState({ levelId: 1 });
       }
     };
 
@@ -169,9 +172,12 @@ export function useMultiplayer() {
         const { players, mySessionId } = useGameStore.getState();
         if (key !== mySessionId) {
           const updated = new Map(players);
-          updated.delete(key);
-          useGameStore.setState({ players: updated });
-          evaluateTeamLevel(updated);
+          const p = updated.get(key);
+          if (p) {
+            // Keep player in the race, only mark connected: false to prevent avatars from vanishing on mobile packet drops
+            updated.set(key, { ...p, connected: false });
+            useGameStore.setState({ players: updated });
+          }
         }
       })
       // 2. High-speed Broadcasts
@@ -238,7 +244,7 @@ export function useMultiplayer() {
         let nextPlayers = state.players;
         if (payload.players && Array.isArray(payload.players)) {
           nextPlayers = new Map(state.players);
-          payload.players.forEach((pSync: { id: string; angleAroundTube?: number; isFarting?: boolean }) => {
+          payload.players.forEach((pSync: { id: string; displayName?: string; seatIndex?: number; animalType?: any; angleAroundTube?: number; isFarting?: boolean }) => {
             // CRITICAL: NEVER overwrite local player's angle with stale host sync!
             if (pSync.id === myPlayerId) return;
             const existing = nextPlayers.get(pSync.id);
@@ -247,9 +253,35 @@ export function useMultiplayer() {
                 ...existing,
                 angleAroundTube: pSync.angleAroundTube ?? existing.angleAroundTube,
                 isFarting: pSync.isFarting ?? existing.isFarting,
+                connected: true,
+              });
+            } else {
+              // Remote peer was missing locally -> ADD THEM!
+              nextPlayers.set(pSync.id, {
+                id: pSync.id,
+                displayName: pSync.displayName || 'Player',
+                seatIndex: pSync.seatIndex ?? 0,
+                ready: true,
+                connected: true,
+                fartCooldownMs: 0,
+                isFarting: pSync.isFarting ?? false,
+                animalType: pSync.animalType || (pSync.seatIndex === 0 ? 'bear' : 'frog'),
+                angleAroundTube: pSync.angleAroundTube ?? (pSync.seatIndex === 0 ? Math.PI : 0),
               });
             }
           });
+
+          // If host's raft_sync only has 1 player (host), and I am guest, re-announce myself to host!
+          if (!isHost && payload.players.length === 1 && state.mySessionId) {
+            const me = nextPlayers.get(state.mySessionId);
+            if (me) {
+              channel.send({
+                type: 'broadcast',
+                event: 'player_join',
+                payload: me,
+              });
+            }
+          }
         }
 
         useGameStore.setState({
@@ -263,16 +295,16 @@ export function useMultiplayer() {
         if (!payload) return;
         // Remote peer steering: update that player's angle without overwriting local steerX!
         if (payload.playerId && payload.playerId !== myPlayerId) {
-          if (payload.angleAroundTube !== undefined) {
-            const { players } = useGameStore.getState();
-            const p = players.get(payload.playerId);
-            if (p) {
-              const next = new Map(players);
-              next.set(payload.playerId, { ...p, angleAroundTube: payload.angleAroundTube });
-              useGameStore.setState({ players: next });
-            }
-          } else if (payload.dir !== undefined) {
-            useGameStore.getState().movePlayerAngle(payload.playerId, (payload.dir || 0) * 0.15);
+          const { players } = useGameStore.getState();
+          const p = players.get(payload.playerId);
+          if (p) {
+            const next = new Map(players);
+            next.set(payload.playerId, {
+              ...p,
+              angleAroundTube: payload.angleAroundTube ?? p.angleAroundTube,
+              connected: true,
+            });
+            useGameStore.setState({ players: next });
           }
         }
       })
@@ -282,14 +314,14 @@ export function useMultiplayer() {
         const p = players.get(payload.id);
         if (p && payload.angleAroundTube !== undefined) {
           const next = new Map(players);
-          next.set(payload.id, { ...p, angleAroundTube: payload.angleAroundTube });
+          next.set(payload.id, { ...p, angleAroundTube: payload.angleAroundTube, connected: true });
           useGameStore.setState({ players: next });
         }
       })
       .on('broadcast', { event: 'player_join' }, ({ payload }) => {
         const { players, mySessionId } = useGameStore.getState();
         const next = new Map(players);
-        next.set(payload.id, payload);
+        next.set(payload.id, { ...payload, connected: true });
         useGameStore.setState({ players: next });
         evaluateTeamLevel(next);
 
@@ -306,18 +338,25 @@ export function useMultiplayer() {
       .on('broadcast', { event: 'player_sync' }, ({ payload }) => {
         const { players } = useGameStore.getState();
         const next = new Map(players);
-        next.set(payload.id, payload);
+        next.set(payload.id, { ...payload, connected: true });
         useGameStore.setState({ players: next });
         evaluateTeamLevel(next);
       })
       .on('broadcast', { event: 'sync_team_level' }, ({ payload }) => {
         if (payload?.levelId) {
-          useGameStore.setState({ levelId: payload.levelId });
+          useGameStore.getState().setLevelId(payload.levelId);
+        }
+      })
+      .on('broadcast', { event: 'level_finish' }, ({ payload }) => {
+        if (payload?.levelId) {
+          useGameStore.setState({ levelId: payload.levelId, finished: true, phase: 'finished' });
+        } else {
+          useGameStore.setState({ finished: true, phase: 'finished' });
         }
       })
       .on('broadcast', { event: 'game_start' }, ({ payload }) => {
         if (payload?.levelId) {
-          useGameStore.setState({ levelId: payload.levelId });
+          useGameStore.getState().setLevelId(payload.levelId);
         }
         useGameStore.getState().setPhase('playing');
       })
@@ -326,10 +365,7 @@ export function useMultiplayer() {
         useGameStore.getState().triggerCrashAndAutoRestart(reason);
       })
       .on('broadcast', { event: 'next_level' }, ({ payload }) => {
-        if (payload?.levelId) {
-          useGameStore.setState({ levelId: payload.levelId });
-        }
-        useGameStore.getState().nextLevel();
+        useGameStore.getState().nextLevel(payload?.levelId);
       })
       .on('broadcast', { event: 'ready' }, ({ payload }) => {
         const { players } = useGameStore.getState();
@@ -676,19 +712,20 @@ export function useMultiplayer() {
   }, []);
 
   const sendNextLevel = useCallback((targetLevelId?: number) => {
-    useGameStore.getState().nextLevel();
     const curLevel = useGameStore.getState().levelId;
+    const next = targetLevelId ?? (curLevel < 5 ? curLevel + 1 : 1);
+    useGameStore.getState().nextLevel(next);
 
     if (realtimeChannel) {
       realtimeChannel.send({
         type: 'broadcast',
         event: 'next_level',
-        payload: { levelId: targetLevelId ?? curLevel },
+        payload: { levelId: next },
       });
     }
 
     const room = useGameStore.getState().room ?? activeRoom;
-    room?.send('next_level', { levelId: targetLevelId ?? curLevel });
+    room?.send('next_level', { levelId: next });
   }, []);
 
   const leaveRoom = useCallback(() => {
@@ -700,6 +737,18 @@ export function useMultiplayer() {
     room?.leave();
     activeRoom = null;
     useGameStore.getState().disconnect();
+  }, []);
+
+  // Select level in lobby or game
+  const sendSelectLevel = useCallback((levelId: number) => {
+    useGameStore.getState().setLevelId(levelId);
+    if (realtimeChannel) {
+      realtimeChannel.send({
+        type: 'broadcast',
+        event: 'sync_team_level',
+        payload: { levelId },
+      });
+    }
   }, []);
 
   // ── Authoritative Host Raft Sync & Collision Callback Hook ──
@@ -719,11 +768,25 @@ export function useMultiplayer() {
       }
     });
 
-    // 2. High-frequency Authoritative Raft Position Broadcast (25 times/sec, every 40ms)
+    // 2. Wire level finish callback so host broadcasts level completion immediately
+    useGameStore.getState().setOnLevelFinishCallback(() => {
+      if (realtimeChannel) {
+        const { levelId, roomCode, isHost, elapsedMs } = useGameStore.getState();
+        if (roomCode && isHost) {
+          realtimeChannel.send({
+            type: 'broadcast',
+            event: 'level_finish',
+            payload: { levelId, elapsedMs, nextLevel: levelId + 1 },
+          });
+        }
+      }
+    });
+
+    // 3. High-frequency Authoritative Raft Position Broadcast (25 times/sec, every 40ms)
     // Ensures host and all peers share the exact identical coordinate perspective and obstacles!
     const syncInterval = setInterval(() => {
       const state = useGameStore.getState();
-      if (state.phase === 'playing' && state.roomCode && realtimeChannel) {
+      if ((state.phase === 'playing' || state.phase === 'finished') && state.roomCode && realtimeChannel) {
         if (state.isHost) {
           realtimeChannel.send({
             type: 'broadcast',
@@ -742,8 +805,12 @@ export function useMultiplayer() {
               obstacles: state.obstacles,
               players: Array.from(state.players.values()).map((p) => ({
                 id: p.id,
+                displayName: p.displayName,
+                seatIndex: p.seatIndex,
+                animalType: p.animalType,
                 angleAroundTube: p.angleAroundTube,
                 isFarting: p.isFarting,
+                connected: p.connected,
               })),
             },
           });
@@ -764,5 +831,5 @@ export function useMultiplayer() {
     return () => clearInterval(syncInterval);
   }, []);
 
-  return { createRoom, joinRoom, sendFart, sendSteer, sendReady, sendStart, sendRestart, sendNextLevel, leaveRoom };
+  return { createRoom, joinRoom, sendFart, sendSteer, sendReady, sendStart, sendRestart, sendNextLevel, sendSelectLevel, leaveRoom };
 }
