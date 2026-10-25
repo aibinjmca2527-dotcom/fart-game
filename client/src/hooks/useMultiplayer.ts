@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase';
 import { useGameStore, type PlayerInfo, type FartEvent } from '../store/gameStore';
 import { GameRoomState } from '../shared/schemas';
 import { PHYSICS } from '../shared/constants';
+import { getSectorCenterAngle } from '../shared/levels';
 import { getTeamSignature, getSavedTeamLevel } from '../lib/teamProgression';
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? 'ws://localhost:2567';
@@ -123,16 +124,17 @@ export function useMultiplayer() {
                 useGameStore.setState({ hostId: p.id });
               }
               const existing = updated.get(p.id);
+              const seatIdx = p.seatIndex ?? (p.id === mySessionId ? (isHost ? 0 : 1) : 1);
               updated.set(p.id, {
                 id: p.id,
                 displayName: p.displayName || 'Player',
-                seatIndex: p.seatIndex ?? (p.id === mySessionId ? (isHost ? 0 : 1) : 1),
+                seatIndex: seatIdx,
                 ready: p.ready ?? false,
                 connected: true,
                 fartCooldownMs: 0,
                 isFarting: existing?.isFarting ?? false,
-                animalType: p.animalType || (p.seatIndex === 0 ? 'bear' : 'frog'),
-                angleAroundTube: p.angleAroundTube ?? Math.PI,
+                animalType: p.animalType || (seatIdx === 0 ? 'bear' : 'frog'),
+                angleAroundTube: p.angleAroundTube ?? (seatIdx === 0 ? Math.PI : 0),
               });
             }
           }
@@ -146,16 +148,17 @@ export function useMultiplayer() {
         (newPresences as Array<any>).forEach((p) => {
           if (p && p.id) {
             const existing = updated.get(p.id);
+            const seatIdx = p.seatIndex ?? (p.id === mySessionId ? (isHost ? 0 : 1) : 1);
             updated.set(p.id, {
               id: p.id,
               displayName: p.displayName || 'Player',
-              seatIndex: p.seatIndex ?? (p.id === mySessionId ? (isHost ? 0 : 1) : 1),
+              seatIndex: seatIdx,
               ready: p.ready ?? false,
               connected: true,
               fartCooldownMs: 0,
               isFarting: existing?.isFarting ?? false,
-              animalType: p.animalType || 'frog',
-              angleAroundTube: p.angleAroundTube ?? Math.PI * 0.5,
+              animalType: p.animalType || (seatIdx === 0 ? 'bear' : 'frog'),
+              angleAroundTube: p.angleAroundTube ?? (seatIdx === 0 ? Math.PI : 0),
             });
           }
         });
@@ -236,6 +239,8 @@ export function useMultiplayer() {
         if (payload.players && Array.isArray(payload.players)) {
           nextPlayers = new Map(state.players);
           payload.players.forEach((pSync: { id: string; angleAroundTube?: number; isFarting?: boolean }) => {
+            // CRITICAL: NEVER overwrite local player's angle with stale host sync!
+            if (pSync.id === myPlayerId) return;
             const existing = nextPlayers.get(pSync.id);
             if (existing) {
               nextPlayers.set(pSync.id, {
@@ -255,11 +260,30 @@ export function useMultiplayer() {
         });
       })
       .on('broadcast', { event: 'steer' }, ({ payload }) => {
-        if (payload?.dir !== undefined) {
-          setSteerX(payload.dir);
+        if (!payload) return;
+        // Remote peer steering: update that player's angle without overwriting local steerX!
+        if (payload.playerId && payload.playerId !== myPlayerId) {
+          if (payload.angleAroundTube !== undefined) {
+            const { players } = useGameStore.getState();
+            const p = players.get(payload.playerId);
+            if (p) {
+              const next = new Map(players);
+              next.set(payload.playerId, { ...p, angleAroundTube: payload.angleAroundTube });
+              useGameStore.setState({ players: next });
+            }
+          } else if (payload.dir !== undefined) {
+            useGameStore.getState().movePlayerAngle(payload.playerId, (payload.dir || 0) * 0.15);
+          }
         }
-        if (payload?.playerId) {
-          useGameStore.getState().movePlayerAngle(payload.playerId, (payload.dir || 0) * 0.15);
+      })
+      .on('broadcast', { event: 'player_angle' }, ({ payload }) => {
+        if (!payload || !payload.id || payload.id === myPlayerId) return;
+        const { players } = useGameStore.getState();
+        const p = players.get(payload.id);
+        if (p && payload.angleAroundTube !== undefined) {
+          const next = new Map(players);
+          next.set(payload.id, { ...p, angleAroundTube: payload.angleAroundTube });
+          useGameStore.setState({ players: next });
         }
       })
       .on('broadcast', { event: 'player_join' }, ({ payload }) => {
@@ -327,7 +351,7 @@ export function useMultiplayer() {
             fartCooldownMs: 0,
             isFarting: false,
             animalType: isHost ? 'bear' : 'frog',
-            angleAroundTube: isHost ? Math.PI : Math.PI * 0.5,
+            angleAroundTube: getSectorCenterAngle(isHost ? 0 : 1, 2),
             isHost,
           };
           try {
@@ -466,7 +490,7 @@ export function useMultiplayer() {
         fartCooldownMs: 0,
         isFarting: false,
         animalType: 'frog',
-        angleAroundTube: Math.PI * 0.5,
+        angleAroundTube: getSectorCenterAngle(1, 2),
       };
       const curPlayers = new Map(useGameStore.getState().players);
       curPlayers.set(myId, guestPlayer);
@@ -547,13 +571,18 @@ export function useMultiplayer() {
   // Send Side-by-Side Steer (-1 left, 0 center, +1 right)
   const sendSteer = useCallback((dir: number) => {
     setSteerX(dir);
-    const { mySessionId } = useGameStore.getState();
+    const { mySessionId, players } = useGameStore.getState();
+    const myPlayer = players.get(mySessionId);
 
     if (realtimeChannel) {
       realtimeChannel.send({
         type: 'broadcast',
         event: 'steer',
-        payload: { dir, playerId: mySessionId },
+        payload: {
+          dir,
+          playerId: mySessionId,
+          angleAroundTube: myPlayer?.angleAroundTube,
+        },
       });
     }
   }, [setSteerX]);
@@ -575,7 +604,7 @@ export function useMultiplayer() {
           seatIndex: p?.seatIndex ?? 0,
           ready,
           animalType: p?.animalType || 'frog',
-          angleAroundTube: p?.angleAroundTube ?? Math.PI * 0.5,
+          angleAroundTube: p?.angleAroundTube ?? (p?.seatIndex === 0 ? Math.PI : 0),
         });
       } catch {
         // presence optional
@@ -694,29 +723,41 @@ export function useMultiplayer() {
     // Ensures host and all peers share the exact identical coordinate perspective and obstacles!
     const syncInterval = setInterval(() => {
       const state = useGameStore.getState();
-      if (state.phase === 'playing' && state.roomCode && state.isHost && realtimeChannel) {
-        realtimeChannel.send({
-          type: 'broadcast',
-          event: 'raft_sync',
-          payload: {
-            posX: state.bowl.posX,
-            posZ: state.bowl.posZ,
-            velX: state.bowl.velX,
-            velZ: state.bowl.velZ,
-            angle: state.bowl.angle,
-            angularVelocity: state.bowl.angularVelocity,
-            elapsedMs: state.elapsedMs,
-            phase: state.phase,
-            levelId: state.levelId,
-            hostId: state.mySessionId,
-            obstacles: state.obstacles,
-            players: Array.from(state.players.values()).map((p) => ({
-              id: p.id,
-              angleAroundTube: p.angleAroundTube,
-              isFarting: p.isFarting,
-            })),
-          },
-        });
+      if (state.phase === 'playing' && state.roomCode && realtimeChannel) {
+        if (state.isHost) {
+          realtimeChannel.send({
+            type: 'broadcast',
+            event: 'raft_sync',
+            payload: {
+              posX: state.bowl.posX,
+              posZ: state.bowl.posZ,
+              velX: state.bowl.velX,
+              velZ: state.bowl.velZ,
+              angle: state.bowl.angle,
+              angularVelocity: state.bowl.angularVelocity,
+              elapsedMs: state.elapsedMs,
+              phase: state.phase,
+              levelId: state.levelId,
+              hostId: state.mySessionId,
+              obstacles: state.obstacles,
+              players: Array.from(state.players.values()).map((p) => ({
+                id: p.id,
+                angleAroundTube: p.angleAroundTube,
+                isFarting: p.isFarting,
+              })),
+            },
+          });
+        } else {
+          // Guest player broadcasts their real-time angle around tube to host & peers
+          const me = state.players.get(state.mySessionId);
+          if (me && me.angleAroundTube !== undefined) {
+            realtimeChannel.send({
+              type: 'broadcast',
+              event: 'player_angle',
+              payload: { id: state.mySessionId, angleAroundTube: me.angleAroundTube },
+            });
+          }
+        }
       }
     }, 40);
 

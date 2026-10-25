@@ -33,10 +33,13 @@ body {
   -webkit-user-select: none;
 }
 
-/* Canvas */
-canvas {
+/* Canvas and Touch Controls */
+canvas, button, [data-engine] {
   display: block;
   outline: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* Custom scrollbar */

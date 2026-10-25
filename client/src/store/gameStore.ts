@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import * as Colyseus from 'colyseus.js';
 import { soundManager } from '../lib/audio';
 import { FART } from '../shared/constants';
-import { LEVELS, getTrackCenterX } from '../shared/levels';
+import { LEVELS, getTrackCenterX, getSectorCenterAngle } from '../shared/levels';
 import { saveSoloMaxUnlockedLevel, getTeamSignature, saveTeamLevel } from '../lib/teamProgression';
 
 export type GamePhase = 'lobby' | 'countdown' | 'playing' | 'finished' | 'failed';
@@ -167,12 +167,30 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().onCollisionCallback?.();
   },
 
-  // Move player around the perimeter of the circular tube
+  // Move player around the perimeter of the circular tube within their designated sector (1/2, 1/3, 1/4)
   movePlayerAngle: (playerId, deltaAngle) => {
     const { players } = get();
     const p = players.get(playerId);
     if (!p) return;
-    const nextAngle = (p.angleAroundTube + deltaAngle + Math.PI * 2) % (Math.PI * 2);
+
+    // Sector allocation strictly enforced:
+    // 2 players: 1/2 tube (180 deg)
+    // 3 players: 1/3 tube (120 deg)
+    // 4 players: 1/4 tube (90 deg)
+    const numPlayers = Math.max(1, Math.min(4, players.size));
+    const sectorSpan = (Math.PI * 2) / numPlayers;
+    const maxOffsetFromCenter = (sectorSpan / 2) * 0.88;
+
+    const seatIdx = p.seatIndex ?? 0;
+    const centerAngle = getSectorCenterAngle(seatIdx, numPlayers);
+
+    let diff = ((p.angleAroundTube ?? centerAngle) - centerAngle) % (Math.PI * 2);
+    if (diff > Math.PI) diff -= Math.PI * 2;
+    if (diff < -Math.PI) diff += Math.PI * 2;
+
+    const newOffset = Math.max(-maxOffsetFromCenter, Math.min(maxOffsetFromCenter, diff + deltaAngle));
+    const nextAngle = (((centerAngle + newOffset) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+
     const updated = new Map(players);
     updated.set(playerId, { ...p, angleAroundTube: nextAngle });
     set({ players: updated });
@@ -181,11 +199,12 @@ export const useGameStore = create<GameState>((set, get) => ({
   updateFromSchema: (s) => {
     if (!s) return;
     const players = new Map<string, PlayerInfo>();
+    const numPlayers = s.players?.size || 2;
     s.players?.forEach((p: PlayerInfo, key: string) => {
       const existing = get().players.get(key);
       players.set(key, {
         ...p,
-        angleAroundTube: existing?.angleAroundTube ?? (p.seatIndex * Math.PI * 0.5 + Math.PI),
+        angleAroundTube: existing?.angleAroundTube ?? getSectorCenterAngle(p.seatIndex ?? 0, numPlayers),
       });
     });
     const obstacles: ObstacleInfo[] = [];
@@ -258,9 +277,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       predictedBowl.posZ += predictedBowl.velZ * dt;
       predictedBowl.angle += predictedBowl.angularVelocity * dt;
 
-      // Soft clamp within navigable river flume
+      // Soft clamp within navigable river flume (bumper teeth contact boundary)
       const currentCenterlineX = getTrackCenterX(levelId, predictedBowl.posZ);
-      const maxSideDistance = 5.35;
+      const maxSideDistance = 3.80;
       if (predictedBowl.posX < currentCenterlineX - maxSideDistance) {
         predictedBowl.posX = currentCenterlineX - maxSideDistance;
       }
@@ -336,8 +355,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // ── Check Side Banks & Border Collision ──
     // Visual river flume is 12m wide (6.0m to each bank). Sawtooth bumpers are along the bank edges at +-5.8m.
-    // Collision occurs only when actually contacting the bank edge bumper cones (5.35m from centerline).
-    const maxSideDistance = 5.35;
+    // Cone bumper tips stick out into the water to 5.48m. Raft outer radius is 1.77m.
+    // The exact moment the tube outer edge touches the bumper tooth tips: 5.48m - 1.77m = 3.71m from centerline.
+    // Using 3.80m for exact contact with the sawtooth bumper teeth.
+    const maxSideDistance = 3.80;
     const leftLimit = currentCenterlineX - maxSideDistance;
     const rightLimit = currentCenterlineX + maxSideDistance;
 
@@ -385,10 +406,11 @@ export const useGameStore = create<GameState>((set, get) => ({
       };
     });
 
-    // ── Check Obstacle Collisions (Generous hitboxes give players advantage for thrilling near-misses) ──
+    // ── Check Obstacle Collisions (Exact touching collision accuracy: fails at the exact moment of visual contact) ──
     // Checks only for authoritative host/solo player as soon as boat moves past spawn (z > 8)
     if (spawnImmunityMs <= 0 && newBowl.posZ > 8) {
-      const tubeRadius = 0.85; // Forgiving core radius gives players dodging advantage
+      // Visual tube outer radius: torus major radius 1.35 + tube radius 0.42 = 1.77m
+      const tubeRadius = 1.77;
       for (let i = 0; i < updatedObstacles.length; i++) {
         const liveObs = updatedObstacles[i];
         const cfg = level.obstacles[i];
@@ -400,11 +422,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         // Gates: doorway posts collision
         if (cfg.kind === 'gate_pair' || cfg.kind === 'narrow_passage') {
           const gateW = cfg.width ?? 6.5;
-          const postRadius = 0.20;
+          const postRadius = 0.25;
           const leftPostX = liveObs.x - (gateW / 2 + 0.4);
           const rightPostX = liveObs.x + (gateW / 2 + 0.4);
 
-          if (dz < tubeRadius + 0.5) {
+          if (dz < tubeRadius + postRadius + 0.3) {
             const distLeft = Math.hypot(newBowl.posX - leftPostX, dz);
             const distRight = Math.hypot(newBowl.posX - rightPostX, dz);
             if (distLeft < tubeRadius + postRadius || distRight < tubeRadius + postRadius) {
@@ -418,32 +440,36 @@ export const useGameStore = create<GameState>((set, get) => ({
         // Spinning gate collision
         if (cfg.kind === 'spinning_gate') {
           const halfW = (cfg.width ?? 8) / 2;
-          const halfThick = 0.12;
+          const halfThick = 0.18;
           const rot = liveObs.rotation;
           const dx = newBowl.posX - liveObs.x;
           const localX = dx * Math.cos(-rot) - dzSigned * Math.sin(-rot);
           const localZ = dx * Math.sin(-rot) + dzSigned * Math.cos(-rot);
-          if (Math.abs(localZ) < (tubeRadius + halfThick) && Math.abs(localX) < (halfW + tubeRadius * 0.5)) {
+          if (Math.abs(localZ) < (tubeRadius + halfThick) && Math.abs(localX) < (halfW + tubeRadius)) {
             get().triggerCrashAndAutoRestart('Hit Spinning Gate!');
             return;
           }
           continue;
         }
 
-        // Circular Obstacles (orbiting hazards, static barrels, rocks, moving barriers)
-        let obsRadius = 0.45;
+        // Circular Obstacles (exact visual boundary contact)
+        let obsRadius = 0.55;
         let label = 'Obstacle';
         if (cfg.kind === 'orbiting_hazard') {
-          obsRadius = 0.60;
+          // Buoy sphere + outer spiked ring tips extending ~0.50m
+          obsRadius = (cfg.radius ?? 0.70) + 0.50;
           label = 'Orbiting Hazard Buoy';
         } else if (cfg.kind === 'static_rock') {
-          obsRadius = 0.50;
+          // Dodecahedron outer vertices
+          obsRadius = cfg.radius ?? 0.75;
           label = 'Rock';
         } else if (cfg.kind === 'static_barrel') {
-          obsRadius = 0.38;
+          // Visual barrel cylinder radius + top lip
+          obsRadius = (cfg.radius ?? 0.55) + 0.05;
           label = 'Barrel';
         } else if (cfg.kind === 'moving_barrier') {
-          obsRadius = 0.40;
+          // Barrier box half-extent
+          obsRadius = 0.35;
           label = 'Barrier';
         }
 

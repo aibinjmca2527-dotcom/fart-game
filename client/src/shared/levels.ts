@@ -92,6 +92,13 @@ export function getTrackCenterX(levelId: number, z: number): number {
   }
 }
 
+export function getSectorCenterAngle(seatIndex: number, numPlayers: number = 2): number {
+  const count = Math.max(1, Math.min(4, numPlayers));
+  const sectorSpan = (Math.PI * 2) / count;
+  // Seat 0 always starts at PI (rear), subsequent seats distributed evenly clockwise around the tube
+  return (((Math.PI + (seatIndex % count) * sectorSpan) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+}
+
 // ── LEVEL 1: The First Flush (Gentle curves, first circular orbiting hazard) ──
 const LEVEL_1: LevelConfig = {
   id: 1,

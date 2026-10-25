@@ -8,7 +8,8 @@ import { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
-import type { PlayerInfo } from '../store/gameStore';
+import { useGameStore, type PlayerInfo } from '../store/gameStore';
+import { getSectorCenterAngle } from '../shared/levels';
 
 export type AnimalType = 'bear' | 'hippo' | 'frog' | 'rhino';
 
@@ -17,10 +18,10 @@ interface CharacterProps {
 }
 
 const SEAT_CONFIG = [
-  { defaultAngle: Math.PI, label: 'bear', name: 'Potatoplays', color: '#4A3525', accent: '#8D6E63' },
-  { defaultAngle: Math.PI * 0.5, label: 'frog', name: 'hf', color: '#68BB59', accent: '#A0E474' },
-  { defaultAngle: 0, label: 'hippo', name: 'Klurge', color: '#C67D5A', accent: '#EAA989' },
-  { defaultAngle: -Math.PI * 0.5, label: 'rhino', name: 'GigaChonk', color: '#4A6B82', accent: '#82A3BA' },
+  { defaultAngle: Math.PI, emoji: '🐻', label: 'bear', name: 'Potatoplays', color: '#4A3525', accent: '#8D6E63' },
+  { defaultAngle: 0, emoji: '🐸', label: 'frog', name: 'hf', color: '#68BB59', accent: '#A0E474' },
+  { defaultAngle: Math.PI * 0.5, emoji: '🦛', label: 'hippo', name: 'Klurge', color: '#C67D5A', accent: '#EAA989' },
+  { defaultAngle: -Math.PI * 0.5, emoji: '🦏', label: 'rhino', name: 'GigaChonk', color: '#4A6B82', accent: '#82A3BA' },
 ];
 
 /** Individual animal character sitting on the raft rim */
@@ -28,17 +29,20 @@ export function AnimalCharacter({ player }: CharacterProps) {
   const groupRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Group>(null);
 
+  const numPlayers = useGameStore((s) => s.players.size);
   const seat = SEAT_CONFIG[player.seatIndex % 4];
   const radius = 1.05;
 
-  // Use the player's dynamic angle around the tube (defaulting to their seat angle)
-  const angle = player.angleAroundTube ?? seat.defaultAngle;
+  // Use the player's dynamic angle around the tube (defaulting to their sector center)
+  const defaultAngle = getSectorCenterAngle(player.seatIndex ?? 0, numPlayers);
+  const angle = player.angleAroundTube ?? defaultAngle;
   const posX = Math.sin(angle) * radius;
   const posZ = Math.cos(angle) * radius;
 
   // Face inward toward center of raft (rotation = angle + Math.PI)
   const facingY = angle + Math.PI;
-  const shownName = player.displayName || seat.name;
+  const rawName = player.displayName || seat.name;
+  const shownName = (rawName.includes('@') ? rawName.split('@')[0] : rawName).slice(0, 10);
 
   useFrame(({ clock }) => {
     if (!groupRef.current || !bodyRef.current) return;
@@ -61,29 +65,44 @@ export function AnimalCharacter({ player }: CharacterProps) {
 
   return (
     <group ref={groupRef} position={[posX, 0.28, posZ]} rotation={[0, facingY, 0]}>
-      {/* Floating 3D Nametag */}
+      {/* Floating 3D Nametag (strictly unselectable to prevent touch-selection pins) */}
       <Html
         position={[0, 1.45, 0]}
         center
         distanceFactor={14}
         zIndexRange={[1, 5]}
-        style={{ pointerEvents: 'none' }}
+        style={{
+          pointerEvents: 'none',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          touchAction: 'none',
+        }}
       >
         <div style={{
-          background: 'rgba(15, 23, 42, 0.85)',
+          background: 'rgba(15, 23, 42, 0.90)',
           color: '#ffffff',
           fontWeight: 800,
-          fontSize: '13px',
+          fontSize: '12px',
           fontFamily: "'Segoe UI', Roboto, sans-serif",
-          padding: '2px 10px',
+          padding: '2px 9px',
           borderRadius: '999px',
           border: `2px solid ${seat.color}`,
           whiteSpace: 'nowrap',
           textShadow: '0 1px 3px rgba(0,0,0,0.8)',
-          boxShadow: '0 4px 10px rgba(0,0,0,0.3)',
+          boxShadow: '0 4px 10px rgba(0,0,0,0.4)',
           letterSpacing: '0.5px',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          MozUserSelect: 'none',
+          msUserSelect: 'none',
+          WebkitTouchCallout: 'none',
+          pointerEvents: 'none',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '4px',
         }}>
-          {shownName}
+          <span style={{ fontSize: '13px' }}>{seat.emoji}</span>
+          <span>{shownName}</span>
         </div>
       </Html>
 

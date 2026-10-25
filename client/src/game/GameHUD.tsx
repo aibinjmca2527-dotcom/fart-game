@@ -60,27 +60,90 @@ export function GameHUD({ myPlayerId }: GameHUDProps) {
     }, 110);
   };
 
-  // Global event listeners to guarantee turbo fart never gets stuck running!
+  // Steer hold-down handling for continuous movement around tube
+  const steerDirRef = useRef<number>(0);
+  const steerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopSteer = useCallback((dir: number, e?: React.PointerEvent) => {
+    if (e) {
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {}
+    }
+    if (steerDirRef.current === dir || dir === 0) {
+      steerDirRef.current = 0;
+      if (steerIntervalRef.current) {
+        clearInterval(steerIntervalRef.current);
+        steerIntervalRef.current = null;
+      }
+      sendSteer(0);
+    }
+  }, [sendSteer]);
+
+  const startSteer = useCallback((dir: number, e: React.PointerEvent) => {
+    e.preventDefault();
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {}
+    steerDirRef.current = dir;
+    sendSteer(dir);
+
+    // Continuous smooth motion loop while held down
+    if (steerIntervalRef.current) clearInterval(steerIntervalRef.current);
+    useGameStore.getState().movePlayerAngle(myPlayerId, dir * 0.07);
+    steerIntervalRef.current = setInterval(() => {
+      useGameStore.getState().movePlayerAngle(myPlayerId, dir * 0.07);
+    }, 25);
+  }, [sendSteer, myPlayerId]);
+
+  // Global event listeners to guarantee turbo fart and continuous steer never get stuck running!
   useEffect(() => {
-    const handleGlobalRelease = () => stopTurboFart();
+    const handleGlobalRelease = () => {
+      stopTurboFart();
+      if (steerIntervalRef.current) {
+        clearInterval(steerIntervalRef.current);
+        steerIntervalRef.current = null;
+      }
+      if (steerDirRef.current !== 0) {
+        steerDirRef.current = 0;
+        sendSteer(0);
+      }
+    };
     window.addEventListener('pointerup', handleGlobalRelease);
+    window.addEventListener('pointercancel', handleGlobalRelease);
     window.addEventListener('touchend', handleGlobalRelease);
+    window.addEventListener('touchcancel', handleGlobalRelease);
     window.addEventListener('blur', handleGlobalRelease);
 
     return () => {
       window.removeEventListener('pointerup', handleGlobalRelease);
+      window.removeEventListener('pointercancel', handleGlobalRelease);
       window.removeEventListener('touchend', handleGlobalRelease);
+      window.removeEventListener('touchcancel', handleGlobalRelease);
       window.removeEventListener('blur', handleGlobalRelease);
       stopTurboFart();
+      if (steerIntervalRef.current) {
+        clearInterval(steerIntervalRef.current);
+        steerIntervalRef.current = null;
+      }
+      sendSteer(0);
     };
-  }, [stopTurboFart]);
+  }, [stopTurboFart, sendSteer]);
 
-  // Unconditionally stop fart timer if game phase leaves playing
+  // Unconditionally stop timers if game phase leaves playing
   useEffect(() => {
     if (phase !== 'playing') {
       stopTurboFart();
+      if (steerIntervalRef.current) {
+        clearInterval(steerIntervalRef.current);
+        steerIntervalRef.current = null;
+      }
+      if (steerDirRef.current !== 0) {
+        steerDirRef.current = 0;
+        sendSteer(0);
+      }
     }
-  }, [phase, stopTurboFart]);
+  }, [phase, stopTurboFart, sendSteer]);
 
   const handleRetry = () => {
     stopTurboFart();
@@ -313,16 +376,18 @@ export function GameHUD({ myPlayerId }: GameHUDProps) {
         </div>
       )}
 
-      {/* Onscreen Controls for Gameplay (Move on Tube + Continuous Directional Fart) */}
+      {/* Onscreen Controls for Gameplay (Continuous Move on Tube + Continuous Directional Fart) */}
       {phase === 'playing' && (
         <div className={styles.controls}>
-          {/* Move Counter-Clockwise around Tube */}
+          {/* Move Counter-Clockwise around Tube within sector */}
           <button
             className={styles.steerBtn}
-            onPointerDown={(e) => { e.preventDefault(); sendSteer(-1); }}
-            onPointerUp={(e) => { e.preventDefault(); sendSteer(0); }}
-            onPointerLeave={() => sendSteer(0)}
-            title="Move Around Tube Left (A or ◄)"
+            onPointerDown={(e) => startSteer(-1, e)}
+            onPointerUp={(e) => stopSteer(-1, e)}
+            onPointerCancel={(e) => stopSteer(-1, e)}
+            onLostPointerCapture={(e) => stopSteer(-1, e)}
+            onContextMenu={(e) => e.preventDefault()}
+            title="Press and hold to move around tube left (A or ◄)"
           >
             ◀
           </button>
@@ -332,20 +397,24 @@ export function GameHUD({ myPlayerId }: GameHUDProps) {
             className={`${styles.fartBtn} ${fartPressed ? styles.fartActive : ''}`}
             onPointerDown={onFartPointerDown}
             onPointerUp={stopTurboFart}
-            onPointerLeave={stopTurboFart}
+            onPointerCancel={stopTurboFart}
+            onLostPointerCapture={stopTurboFart}
+            onContextMenu={(e) => e.preventDefault()}
             title="Continuous Directional Fart! (SPACE or F)"
           >
             <span className={styles.fartEmoji}>💨</span>
             <span className={styles.fartLabel}>FART!</span>
           </button>
 
-          {/* Move Clockwise around Tube */}
+          {/* Move Clockwise around Tube within sector */}
           <button
             className={styles.steerBtn}
-            onPointerDown={(e) => { e.preventDefault(); sendSteer(1); }}
-            onPointerUp={(e) => { e.preventDefault(); sendSteer(0); }}
-            onPointerLeave={() => sendSteer(0)}
-            title="Move Around Tube Right (D or ►)"
+            onPointerDown={(e) => startSteer(1, e)}
+            onPointerUp={(e) => stopSteer(1, e)}
+            onPointerCancel={(e) => stopSteer(1, e)}
+            onLostPointerCapture={(e) => stopSteer(1, e)}
+            onContextMenu={(e) => e.preventDefault()}
+            title="Press and hold to move around tube right (D or ►)"
           >
             ▶
           </button>
