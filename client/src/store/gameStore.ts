@@ -288,14 +288,21 @@ export const useGameStore = create<GameState>((set, get) => ({
     newBowl.posZ += newBowl.velZ * dt;
     newBowl.angle += newBowl.angularVelocity * dt;
 
-    // ── Check Side Banks Collision ──
-    // Touching the side bank immediately ends the run and auto-restarts the level!
-    const maxHalfW = 4.6;
-    const leftLimit = currentCenterlineX - maxHalfW;
-    const rightLimit = currentCenterlineX + maxHalfW;
-    if (spawnImmunityMs <= 0 && newBowl.posZ > 12) {
+    // Prevent raft from ever glitching backwards behind start line
+    if (newBowl.posZ < 3.0) {
+      newBowl.posZ = 3.0;
+      if (newBowl.velZ < 0) newBowl.velZ = 0;
+    }
+
+    // ── Check Side Banks & Border Collision ──
+    // Visual river half-width is ~5.1m; outer torus radius is ~1.35m.
+    // Touching the colorful side sawtooth borders immediately ends the run and auto-restarts the level!
+    const borderHalfW = 4.8;
+    const leftLimit = currentCenterlineX - borderHalfW;
+    const rightLimit = currentCenterlineX + borderHalfW;
+    if (spawnImmunityMs <= 0 && newBowl.posZ > 8) {
       if (newBowl.posX <= leftLimit || newBowl.posX >= rightLimit) {
-        get().triggerCrashAndAutoRestart('Hit the Side Bank!');
+        get().triggerCrashAndAutoRestart('Hit River Side Border!');
         return;
       }
     } else {

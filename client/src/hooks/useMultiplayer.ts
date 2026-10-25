@@ -90,18 +90,78 @@ export function useMultiplayer() {
     });
   }, [setRoom, updateFromSchema, addFartEvent, addCollisionEvent, addCheckpointEvent, setPhase]);
 
-  // Setup Supabase Realtime Broadcast Channel for serverless peer sync
+  // Setup Supabase Realtime Broadcast & Presence Channel for peer sync
   const setupSupabaseChannel = useCallback((code: string, myPlayerId: string, displayName: string, isHost: boolean) => {
     if (realtimeChannel) {
       supabase.removeChannel(realtimeChannel);
     }
 
     const channel = supabase.channel(`fart_room_${code}`, {
-      config: { broadcast: { self: false } },
+      config: {
+        broadcast: { ack: true, self: false },
+        presence: { key: myPlayerId },
+      },
     });
 
-    // Listen to broadcast messages from other peers
+    // 1. Presence Sync (guarantees host and guests see each other's full state)
     channel
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState();
+        const { players, mySessionId } = useGameStore.getState();
+        const updated = new Map(players);
+
+        Object.keys(state).forEach((key) => {
+          const presences = state[key] as Array<any>;
+          if (presences && presences.length > 0) {
+            const p = presences[presences.length - 1];
+            if (p && p.id) {
+              const existing = updated.get(p.id);
+              updated.set(p.id, {
+                id: p.id,
+                displayName: p.displayName || 'Player',
+                seatIndex: p.seatIndex ?? (p.id === mySessionId ? (isHost ? 0 : 1) : 1),
+                ready: p.ready ?? false,
+                connected: true,
+                fartCooldownMs: 0,
+                isFarting: existing?.isFarting ?? false,
+                animalType: p.animalType || (p.seatIndex === 0 ? 'bear' : 'frog'),
+                angleAroundTube: p.angleAroundTube ?? Math.PI,
+              });
+            }
+          }
+        });
+        useGameStore.setState({ players: updated });
+      })
+      .on('presence', { event: 'join' }, ({ newPresences }) => {
+        const { players, mySessionId } = useGameStore.getState();
+        const updated = new Map(players);
+        (newPresences as Array<any>).forEach((p) => {
+          if (p && p.id) {
+            const existing = updated.get(p.id);
+            updated.set(p.id, {
+              id: p.id,
+              displayName: p.displayName || 'Player',
+              seatIndex: p.seatIndex ?? (p.id === mySessionId ? (isHost ? 0 : 1) : 1),
+              ready: p.ready ?? false,
+              connected: true,
+              fartCooldownMs: 0,
+              isFarting: existing?.isFarting ?? false,
+              animalType: p.animalType || 'frog',
+              angleAroundTube: p.angleAroundTube ?? Math.PI * 0.5,
+            });
+          }
+        });
+        useGameStore.setState({ players: updated });
+      })
+      .on('presence', { event: 'leave' }, ({ key }) => {
+        const { players, mySessionId } = useGameStore.getState();
+        if (key !== mySessionId) {
+          const updated = new Map(players);
+          updated.delete(key);
+          useGameStore.setState({ players: updated });
+        }
+      })
+      // 2. High-speed Broadcasts
       .on('broadcast', { event: 'fart' }, ({ payload }) => {
         addFartEvent(payload);
       })
@@ -130,7 +190,10 @@ export function useMultiplayer() {
         next.set(payload.id, payload);
         useGameStore.setState({ players: next });
       })
-      .on('broadcast', { event: 'game_start' }, () => {
+      .on('broadcast', { event: 'game_start' }, ({ payload }) => {
+        if (payload?.levelId) {
+          useGameStore.setState({ levelId: payload.levelId });
+        }
         useGameStore.getState().setPhase('playing');
       })
       .on('broadcast', { event: 'game_restart' }, () => {
@@ -151,22 +214,28 @@ export function useMultiplayer() {
           useGameStore.setState({ players: next });
         }
       })
-      .subscribe((status) => {
+      .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
-          // Announce presence
+          const myPayload = {
+            id: myPlayerId,
+            displayName,
+            seatIndex: isHost ? 0 : 1,
+            ready: isHost,
+            connected: true,
+            fartCooldownMs: 0,
+            isFarting: false,
+            animalType: isHost ? 'bear' : 'frog',
+            angleAroundTube: isHost ? Math.PI : Math.PI * 0.5,
+          };
+          try {
+            await channel.track(myPayload);
+          } catch {
+            // Presence optional
+          }
           channel.send({
             type: 'broadcast',
             event: 'player_join',
-            payload: {
-              id: myPlayerId,
-              displayName,
-              seatIndex: isHost ? 0 : 1,
-              ready: isHost,
-              connected: true,
-              fartCooldownMs: 0,
-              isFarting: false,
-              angleAroundTube: isHost ? Math.PI : Math.PI * 0.5,
-            },
+            payload: myPayload,
           });
         }
       });
@@ -282,7 +351,7 @@ export function useMultiplayer() {
         // Offline / mock join
       }
 
-      // Add local player
+      // Add local player and enter lobby immediately
       const guestPlayer: PlayerInfo = {
         id: myId,
         displayName,
@@ -296,7 +365,7 @@ export function useMultiplayer() {
       };
       const curPlayers = new Map(useGameStore.getState().players);
       curPlayers.set(myId, guestPlayer);
-      useGameStore.setState({ players: curPlayers, mySessionId: myId, roomCode: code });
+      useGameStore.setState({ phase: 'lobby', players: curPlayers, mySessionId: myId, roomCode: code });
 
       // Setup Supabase Realtime channel
       setupSupabaseChannel(code, myId, displayName, false);
@@ -393,6 +462,19 @@ export function useMultiplayer() {
     }
 
     if (realtimeChannel) {
+      try {
+        realtimeChannel.track({
+          id: mySessionId,
+          displayName: p?.displayName || 'Player',
+          seatIndex: p?.seatIndex ?? 0,
+          ready,
+          animalType: p?.animalType || 'frog',
+          angleAroundTube: p?.angleAroundTube ?? Math.PI * 0.5,
+        });
+      } catch {
+        // presence optional
+      }
+
       realtimeChannel.send({
         type: 'broadcast',
         event: 'ready',

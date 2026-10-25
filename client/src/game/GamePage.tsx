@@ -115,26 +115,6 @@ export function GamePage({ myPlayerId }: GamePageProps) {
     <div style={{ width: '100vw', height: '100dvh', position: 'relative', overflow: 'hidden' }}>
       <GameCanvas />
       <GameHUD myPlayerId={myPlayerId} />
-      {phase === 'playing' && (
-        <div style={{
-          position: 'fixed',
-          bottom: 165,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          color: 'rgba(255,255,255,0.7)',
-          background: 'rgba(0,0,0,0.5)',
-          padding: '6px 16px',
-          borderRadius: '999px',
-          fontSize: '13px',
-          fontWeight: 700,
-          pointerEvents: 'none',
-          whiteSpace: 'nowrap',
-          textShadow: '0 1px 2px rgba(0,0,0,0.8)',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-        }}>
-          ⌨️ A / D or ◄ / ► to Move Around Tube • SPACE to Fart in Aimed Direction!
-        </div>
-      )}
     </div>
   );
 }

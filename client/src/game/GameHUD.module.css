@@ -66,6 +66,101 @@
   to { transform: translateX(-50%) scale(1.05); }
 }
 
+/* Exit / Menu Button in Top Bar */
+.exitBtn {
+  background: rgba(239, 68, 68, 0.2);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  color: #ff9999;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 6px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  pointer-events: all;
+  transition: all 0.2s;
+}
+
+.exitBtn:hover {
+  background: rgba(239, 68, 68, 0.4);
+  color: #fff;
+  border-color: #ef4444;
+}
+
+/* Pause / Exit Modal */
+.pauseOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  pointer-events: all;
+}
+
+.pauseCard {
+  background: rgba(15, 23, 42, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 24px;
+  padding: 32px 28px;
+  width: 90%;
+  max-width: 360px;
+  text-align: center;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pauseTitle {
+  color: #FFD700;
+  font-size: 24px;
+  font-weight: 900;
+  margin: 0;
+}
+
+.pauseSub {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+  margin: -6px 0 10px;
+}
+
+.resumeBtn {
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 800;
+  padding: 14px;
+  border: none;
+  border-radius: 50px;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(34, 197, 94, 0.35);
+  transition: transform 0.15s;
+}
+
+.resumeBtn:hover {
+  transform: translateY(-2px);
+}
+
+.exitConfirmBtn {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1.5px solid rgba(239, 68, 68, 0.4);
+  color: #ff8888;
+  font-size: 15px;
+  font-weight: 700;
+  padding: 12px;
+  border-radius: 50px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.exitConfirmBtn:hover {
+  background: rgba(239, 68, 68, 0.3);
+  color: #fff;
+  border-color: #ef4444;
+}
+
 /* Room Code in Top Bar */
 .roomTag {
   display: flex;

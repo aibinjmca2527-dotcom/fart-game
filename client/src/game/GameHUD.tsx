@@ -22,6 +22,7 @@ export function GameHUD({ myPlayerId }: GameHUDProps) {
 
   const [copied, setCopied] = useState(false);
   const [fartPressed, setFartPressed] = useState(false);
+  const [showPauseModal, setShowPauseModal] = useState(false);
   const turboTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const copyRoomCode = useCallback((code: string) => {
@@ -95,12 +96,14 @@ export function GameHUD({ myPlayerId }: GameHUDProps) {
   };
 
   // Lobby Ready & Start Logic:
-  // "another player login ready only start"
+  // Requires at least 2 players for custom multiplayer rooms!
   const playerList = [...players.values()];
-  const isHost = myPlayerId === hostId || myPlayer?.seatIndex === 0 || playerList.length === 1;
+  const isMultiplayerRoom = Boolean(roomCode);
+  const isHost = myPlayerId === hostId || myPlayer?.seatIndex === 0;
   const otherPlayers = playerList.filter((p) => p.id !== myPlayerId);
-  const allOthersReady = otherPlayers.length === 0 || otherPlayers.every((p) => p.ready);
-  const canStartRace = isHost && allOthersReady;
+  const allOthersReady = otherPlayers.length > 0 && otherPlayers.every((p) => p.ready);
+  const hasMinPlayers = !isMultiplayerRoom || playerList.length >= 2;
+  const canStartRace = isHost && hasMinPlayers && allOthersReady;
 
   const ANIMAL_EMOJIS = ['🐻', '🐸', '🦛', '🦏'];
 
@@ -132,6 +135,15 @@ export function GameHUD({ myPlayerId }: GameHUDProps) {
         <div className={styles.speedometer}>
           {speed.toFixed(1)} m/s
         </div>
+
+        {/* Top-corner Exit Game Button */}
+        <button
+          className={styles.exitBtn}
+          onClick={() => setShowPauseModal(true)}
+          title="Exit Game"
+        >
+          🚪 Exit
+        </button>
       </div>
 
       {/* Non-blocking Auto-Restart Notification */}
@@ -211,7 +223,7 @@ export function GameHUD({ myPlayerId }: GameHUDProps) {
             {myPlayer?.ready ? 'Change to Not Ready' : '✅ Ready Up!'}
           </button>
 
-          {/* Start Race: Enabled ONLY when another player is ready (or single-player host) */}
+          {/* Start Race: Enabled ONLY when another player is in room and ready */}
           <button
             className={styles.startBtn}
             onClick={() => {
@@ -226,8 +238,10 @@ export function GameHUD({ myPlayerId }: GameHUDProps) {
                 : 'linear-gradient(135deg, #666, #444)',
             }}
           >
-            {otherPlayers.length > 0 && !allOthersReady
-              ? '⏳ Waiting for Players to Ready Up...'
+            {isMultiplayerRoom && playerList.length < 2
+              ? '⏳ Waiting for Player 2 to Join (Min 2 Players)...'
+              : otherPlayers.length > 0 && !allOthersReady
+              ? '⏳ Waiting for Player 2 to Ready Up...'
               : '🚀 Start Race'}
           </button>
 
@@ -316,6 +330,31 @@ export function GameHUD({ myPlayerId }: GameHUDProps) {
           >
             ▶
           </button>
+        </div>
+      )}
+
+      {/* Pause / Exit Confirmation Modal */}
+      {showPauseModal && (
+        <div className={styles.pauseOverlay}>
+          <div className={styles.pauseCard}>
+            <h3 className={styles.pauseTitle}>⏸️ Game Menu</h3>
+            <p className={styles.pauseSub}>Level {levelId}: {level.name}</p>
+            <button
+              className={styles.resumeBtn}
+              onClick={() => setShowPauseModal(false)}
+            >
+              ▶ Resume Game
+            </button>
+            <button
+              className={styles.exitConfirmBtn}
+              onClick={() => {
+                setShowPauseModal(false);
+                leaveRoom();
+              }}
+            >
+              🚪 Exit to Dashboard
+            </button>
+          </div>
         </div>
       )}
     </div>

@@ -3,8 +3,13 @@ import { createClient } from '@supabase/supabase-js';
 const rawUrl = (import.meta.env.VITE_SUPABASE_URL as string) || '';
 const rawKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || '';
 
-// Clean up whitespace or accidental quotes
-const supabaseUrl = rawUrl.trim().replace(/^["']|["']$/g, '');
+// Clean up whitespace, accidental quotes, and accidental suffixes like /rest/v1 or /auth/v1
+const supabaseUrl = rawUrl
+  .trim()
+  .replace(/^["']|["']$/g, '')
+  .replace(/\/rest\/v1\/?$/, '')
+  .replace(/\/auth\/v1\/?$/, '')
+  .replace(/\/+$/, '');
 const supabaseAnonKey = rawKey.trim().replace(/^["']|["']$/g, '');
 
 export const isSupabaseConfigured = Boolean(
