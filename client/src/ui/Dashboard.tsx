@@ -3,6 +3,7 @@ import { useAuthStore } from '../store/authStore';
 import { useGameStore } from '../store/gameStore';
 import { useMultiplayer } from '../hooks/useMultiplayer';
 import { LEVELS } from '../shared/levels';
+import { getSoloMaxUnlockedLevel } from '../lib/teamProgression';
 import styles from './Dashboard.module.css';
 
 interface DashboardProps {
@@ -16,6 +17,7 @@ export function Dashboard({ onEnterGame }: DashboardProps) {
 
   const [view, setView] = useState<'home' | 'create' | 'join' | 'howto' | 'settings'>('home');
   const [joinCode, setJoinCode] = useState('');
+  const [maxUnlockedLevel, setMaxUnlockedLevel] = useState(getSoloMaxUnlockedLevel());
   const [selectedLevel, setSelectedLevel] = useState(1);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -24,6 +26,11 @@ export function Dashboard({ onEnterGame }: DashboardProps) {
   const [customName, setCustomName] = useState('');
 
   const displayName = profile?.display_name ?? 'Guest';
+
+  // Refresh unlocked level on mount
+  useEffect(() => {
+    setMaxUnlockedLevel(getSoloMaxUnlockedLevel());
+  }, []);
 
   // Check URL query parameters for auto-joining party (?room=XXXXXX)
   useEffect(() => {
@@ -162,28 +169,41 @@ export function Dashboard({ onEnterGame }: DashboardProps) {
                 </div>
               </div>
 
-              {/* Level grid */}
-              <h2 className={styles.sectionTitle}>Levels</h2>
+              {/* Level grid with progressive unlocks */}
+              <h2 className={styles.sectionTitle}>Courses & Progression</h2>
               <div className={styles.levelGrid}>
-                {LEVELS.map((lvl, i) => (
-                  <div key={lvl.id} className={styles.levelCard}>
-                    <div className={styles.levelEmoji}>{LEVEL_EMOJIS[i]}</div>
-                    <div className={styles.levelNum}>Level {lvl.id}</div>
-                    <div className={styles.levelName}>{lvl.name}</div>
-                    <div className={styles.levelDesc}>{lvl.description}</div>
-                    <button
-                      className={styles.playLevelBtn}
-                      onClick={() => {
-                        setSelectedLevel(lvl.id);
-                        setCreatedRoomCode(null);
-                        setRoomCode('');
-                        setView('create');
-                      }}
+                {LEVELS.map((lvl, i) => {
+                  const isUnlocked = lvl.id <= maxUnlockedLevel;
+                  return (
+                    <div
+                      key={lvl.id}
+                      className={`${styles.levelCard} ${!isUnlocked ? styles.levelLocked : ''}`}
                     >
-                      Play
-                    </button>
-                  </div>
-                ))}
+                      <div className={styles.levelEmoji}>
+                        {isUnlocked ? LEVEL_EMOJIS[i] : '🔒'}
+                      </div>
+                      <div className={styles.levelNum}>
+                        Level {lvl.id}
+                        {!isUnlocked && <span className={styles.lockedBadge}>LOCKED</span>}
+                      </div>
+                      <div className={styles.levelName}>{lvl.name}</div>
+                      <div className={styles.levelDesc}>{lvl.description}</div>
+                      <button
+                        className={`${styles.playLevelBtn} ${!isUnlocked ? styles.playLevelBtnLocked : ''}`}
+                        disabled={!isUnlocked}
+                        onClick={() => {
+                          if (!isUnlocked) return;
+                          setSelectedLevel(lvl.id);
+                          setCreatedRoomCode(null);
+                          setRoomCode('');
+                          setView('create');
+                        }}
+                      >
+                        {isUnlocked ? 'Play' : `🔒 Beat Level ${lvl.id - 1}`}
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -196,15 +216,22 @@ export function Dashboard({ onEnterGame }: DashboardProps) {
               {!createdRoomCode ? (
                 <>
                   <div className={styles.levelSelector}>
-                    {LEVELS.map((lvl, i) => (
-                      <button
-                        key={lvl.id}
-                        className={`${styles.lvlBtn} ${selectedLevel === lvl.id ? styles.lvlSelected : ''}`}
-                        onClick={() => setSelectedLevel(lvl.id)}
-                      >
-                        {LEVEL_EMOJIS[i]} {lvl.name}
-                      </button>
-                    ))}
+                    {LEVELS.map((lvl, i) => {
+                      const isUnlocked = lvl.id <= maxUnlockedLevel;
+                      return (
+                        <button
+                          key={lvl.id}
+                          disabled={!isUnlocked}
+                          className={`${styles.lvlBtn} ${selectedLevel === lvl.id ? styles.lvlSelected : ''} ${!isUnlocked ? styles.lvlBtnLocked : ''}`}
+                          onClick={() => {
+                            if (isUnlocked) setSelectedLevel(lvl.id);
+                          }}
+                          title={isUnlocked ? lvl.name : `Beat Level ${lvl.id - 1} to unlock`}
+                        >
+                          {isUnlocked ? LEVEL_EMOJIS[i] : '🔒'} {lvl.name} {!isUnlocked && '(Locked)'}
+                        </button>
+                      );
+                    })}
                   </div>
 
                   {error && <div className={styles.errorMsg}>{error}</div>}

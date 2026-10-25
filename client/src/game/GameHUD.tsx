@@ -193,6 +193,24 @@ export function GameHUD({ myPlayerId }: GameHUDProps) {
         <div className={styles.lobbyOverlay}>
           <h2 className={styles.lobbyTitle}>🚽 River Raft Party</h2>
 
+          {/* Level & Team Continuation Badge */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+            <span style={{ color: '#FFD700', fontSize: '18px', fontWeight: 800 }}>
+              Course: Level {levelId} — {level.name}
+            </span>
+            {playerList.length >= 2 ? (
+              <div className={levelId > 1 ? styles.returningBadge : styles.newTeamBadge}>
+                {levelId > 1
+                  ? `🔄 Returning Squad! Continuing from Level ${levelId}`
+                  : `✨ New Crew Member! Starting at Level 1`}
+              </div>
+            ) : (
+              <div className={styles.newTeamBadge}>
+                ⏳ Waiting for at least 1 friend to connect...
+              </div>
+            )}
+          </div>
+
           {/* Room Code Card in Lobby */}
           {roomCode && (
             <div className={styles.lobbyCodeCard}>

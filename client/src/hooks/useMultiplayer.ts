@@ -9,6 +9,7 @@ import { supabase } from '../lib/supabase';
 import { useGameStore, type PlayerInfo, type FartEvent } from '../store/gameStore';
 import { GameRoomState } from '../shared/schemas';
 import { PHYSICS } from '../shared/constants';
+import { getTeamSignature, getSavedTeamLevel } from '../lib/teamProgression';
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? 'ws://localhost:2567';
 
@@ -103,6 +104,26 @@ export function useMultiplayer() {
       },
     });
 
+    const evaluateTeamLevel = (playersMap: Map<string, PlayerInfo>) => {
+      if (playersMap.size >= 2) {
+        const names = Array.from(playersMap.values()).map((p) => p.displayName);
+        const teamSig = getTeamSignature(names);
+        if (teamSig) {
+          const savedLevel = getSavedTeamLevel(teamSig);
+          useGameStore.setState({ levelId: savedLevel });
+          if (isHost) {
+            channel.send({
+              type: 'broadcast',
+              event: 'sync_team_level',
+              payload: { levelId: savedLevel, teamSig },
+            });
+          }
+        }
+      } else {
+        useGameStore.setState({ levelId: 1 });
+      }
+    };
+
     // 1. Presence Sync (guarantees host and guests see each other's full state)
     channel
       .on('presence', { event: 'sync' }, () => {
@@ -131,6 +152,7 @@ export function useMultiplayer() {
           }
         });
         useGameStore.setState({ players: updated });
+        evaluateTeamLevel(updated);
       })
       .on('presence', { event: 'join' }, ({ newPresences }) => {
         const { players, mySessionId } = useGameStore.getState();
@@ -152,6 +174,7 @@ export function useMultiplayer() {
           }
         });
         useGameStore.setState({ players: updated });
+        evaluateTeamLevel(updated);
       })
       .on('presence', { event: 'leave' }, ({ key }) => {
         const { players, mySessionId } = useGameStore.getState();
@@ -159,6 +182,7 @@ export function useMultiplayer() {
           const updated = new Map(players);
           updated.delete(key);
           useGameStore.setState({ players: updated });
+          evaluateTeamLevel(updated);
         }
       })
       // 2. High-speed Broadcasts
@@ -173,6 +197,7 @@ export function useMultiplayer() {
         const next = new Map(players);
         next.set(payload.id, payload);
         useGameStore.setState({ players: next });
+        evaluateTeamLevel(next);
 
         // If I am already in the room, send back a sync of myself to the newly joined player!
         const me = players.get(mySessionId);
@@ -189,6 +214,12 @@ export function useMultiplayer() {
         const next = new Map(players);
         next.set(payload.id, payload);
         useGameStore.setState({ players: next });
+        evaluateTeamLevel(next);
+      })
+      .on('broadcast', { event: 'sync_team_level' }, ({ payload }) => {
+        if (payload?.levelId) {
+          useGameStore.setState({ levelId: payload.levelId });
+        }
       })
       .on('broadcast', { event: 'game_start' }, ({ payload }) => {
         if (payload?.levelId) {

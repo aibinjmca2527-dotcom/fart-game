@@ -316,6 +316,34 @@
   text-shadow: 0 4px 16px rgba(0,0,0,0.5);
 }
 
+.returningBadge {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.25), rgba(16, 185, 129, 0.35));
+  border: 1.5px solid #10B981;
+  color: #6EE7B7;
+  font-size: 14px;
+  font-weight: 800;
+  padding: 8px 18px;
+  border-radius: 999px;
+  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  animation: pulseReturning 1.5s infinite alternate;
+}
+
+@keyframes pulseReturning {
+  from { transform: scale(1); }
+  to { transform: scale(1.03); }
+}
+
+.newTeamBadge {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 6px 16px;
+  border-radius: 999px;
+}
+
 .lobbyCodeCard {
   display: flex;
   align-items: center;

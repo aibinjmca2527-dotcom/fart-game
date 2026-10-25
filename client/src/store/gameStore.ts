@@ -3,6 +3,7 @@ import * as Colyseus from 'colyseus.js';
 import { soundManager } from '../lib/audio';
 import { FART } from '../shared/constants';
 import { LEVELS, getTrackCenterX } from '../shared/levels';
+import { saveSoloMaxUnlockedLevel, getTeamSignature, saveTeamLevel } from '../lib/teamProgression';
 
 export type GamePhase = 'lobby' | 'countdown' | 'playing' | 'finished' | 'failed';
 
@@ -415,6 +416,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     // Check Finish Line -> LEVEL COMPLETE!
     if (newBowl.posZ >= level.finishZ && !get().finished) {
       soundManager.playFinish();
+      saveSoloMaxUnlockedLevel(levelId);
+      const teamSig = getTeamSignature([...get().players.values()].map((p) => p.displayName));
+      if (teamSig) {
+        saveTeamLevel(teamSig, levelId + 1);
+      }
       set({ finished: true, phase: 'finished', obstacles: updatedObstacles });
       return;
     }
@@ -431,6 +437,11 @@ export const useGameStore = create<GameState>((set, get) => ({
   nextLevel: () => {
     const curLevel = get().levelId;
     const next = curLevel < LEVELS.length ? curLevel + 1 : 1;
+    saveSoloMaxUnlockedLevel(curLevel);
+    const teamSig = getTeamSignature([...get().players.values()].map((p) => p.displayName));
+    if (teamSig) {
+      saveTeamLevel(teamSig, next);
+    }
     set({
       levelId: next,
       phase: 'playing',

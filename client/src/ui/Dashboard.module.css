@@ -246,6 +246,37 @@
 
 .playLevelBtn:hover { transform: scale(1.05); }
 
+.levelLocked {
+  opacity: 0.55;
+  filter: grayscale(0.5);
+  border-color: rgba(255,255,255,0.05);
+}
+
+.lockedBadge {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ff9999;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.playLevelBtnLocked {
+  background: rgba(255,255,255,0.08) !important;
+  color: rgba(255,255,255,0.4) !important;
+  cursor: not-allowed !important;
+  transform: none !important;
+}
+
+.lvlBtnLocked {
+  opacity: 0.45;
+  cursor: not-allowed !important;
+  background: rgba(255,255,255,0.03) !important;
+  border-color: rgba(255,255,255,0.06) !important;
+}
+
 /* Panel views */
 .panelView { max-width: 600px; }
 
