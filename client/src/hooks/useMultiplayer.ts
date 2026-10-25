@@ -36,25 +36,8 @@ export function useMultiplayer() {
   const {
     setRoom, setRoomCode, setPhase,
     updateFromSchema, addFartEvent, addCollisionEvent,
-    addCheckpointEvent, setSteerX, setOnCollisionCallback
+    addCheckpointEvent, setSteerX
   } = useGameStore();
-
-  // Broadcast crash and restart to all connected peers in the room
-  useEffect(() => {
-    setOnCollisionCallback(() => {
-      if (realtimeChannel) {
-        realtimeChannel.send({
-          type: 'broadcast',
-          event: 'game_restart',
-          payload: {},
-        });
-      }
-      const room = useGameStore.getState().room ?? activeRoom;
-      room?.send('restart', {});
-    });
-
-    return () => setOnCollisionCallback(undefined);
-  }, [setOnCollisionCallback]);
 
   // Attach Colyseus room listeners
   const attachColyseusListeners = useCallback((room: Colyseus.Room<GameRoomState>) => {
@@ -99,7 +82,7 @@ export function useMultiplayer() {
 
     const channel = supabase.channel(`fart_room_${code}`, {
       config: {
-        broadcast: { ack: true, self: false },
+        broadcast: { ack: false, self: false },
         presence: { key: myPlayerId },
       },
     });
@@ -136,6 +119,9 @@ export function useMultiplayer() {
           if (presences && presences.length > 0) {
             const p = presences[presences.length - 1];
             if (p && p.id) {
+              if (p.isHost) {
+                useGameStore.setState({ hostId: p.id });
+              }
               const existing = updated.get(p.id);
               updated.set(p.id, {
                 id: p.id,
@@ -213,12 +199,24 @@ export function useMultiplayer() {
       })
       .on('broadcast', { event: 'raft_sync' }, ({ payload }) => {
         if (!payload) return;
-        const { hostId, mySessionId, bowl } = useGameStore.getState();
+        const state = useGameStore.getState();
         // Host is authoritative for physics simulation
-        if (hostId && hostId === mySessionId) return;
+        if (state.isHost) return;
 
+        // Ensure non-host player transitions to playing if host is playing
+        if (payload.phase && state.phase !== payload.phase) {
+          useGameStore.setState({ phase: payload.phase });
+        }
+        if (payload.levelId && state.levelId !== payload.levelId) {
+          useGameStore.setState({ levelId: payload.levelId });
+        }
+        if (payload.hostId && state.hostId !== payload.hostId) {
+          useGameStore.setState({ hostId: payload.hostId });
+        }
+
+        const bowl = state.bowl;
         const dist = Math.hypot(payload.posX - bowl.posX, payload.posZ - bowl.posZ);
-        if (dist > 3.0) {
+        if (dist > 2.5) {
           // Snap immediately on large delta / reset
           useGameStore.setState({
             bowl: {
@@ -230,21 +228,21 @@ export function useMultiplayer() {
               angle: payload.angle,
               angularVelocity: payload.angularVelocity ?? bowl.angularVelocity,
             },
-            elapsedMs: payload.elapsedMs ?? useGameStore.getState().elapsedMs,
+            elapsedMs: payload.elapsedMs ?? state.elapsedMs,
           });
         } else {
-          // Smooth high-speed convergence
+          // Smooth high-speed convergence (0.85 lerp factor)
           useGameStore.setState({
             bowl: {
               ...bowl,
-              posX: bowl.posX + (payload.posX - bowl.posX) * 0.75,
-              posZ: bowl.posZ + (payload.posZ - bowl.posZ) * 0.75,
+              posX: bowl.posX + (payload.posX - bowl.posX) * 0.85,
+              posZ: bowl.posZ + (payload.posZ - bowl.posZ) * 0.85,
               velX: payload.velX,
               velZ: payload.velZ,
-              angle: bowl.angle + (payload.angle - bowl.angle) * 0.75,
+              angle: bowl.angle + (payload.angle - bowl.angle) * 0.85,
               angularVelocity: payload.angularVelocity ?? bowl.angularVelocity,
             },
-            elapsedMs: payload.elapsedMs ?? useGameStore.getState().elapsedMs,
+            elapsedMs: payload.elapsedMs ?? state.elapsedMs,
           });
         }
       })
@@ -322,6 +320,7 @@ export function useMultiplayer() {
             isFarting: false,
             animalType: isHost ? 'bear' : 'frog',
             angleAroundTube: isHost ? Math.PI : Math.PI * 0.5,
+            isHost,
           };
           try {
             await channel.track(myPayload);
@@ -366,6 +365,7 @@ export function useMultiplayer() {
         levelId,
         hostId: myId,
         mySessionId: myId,
+        isHost: true,
         players: initialPlayers,
       });
 
@@ -432,6 +432,7 @@ export function useMultiplayer() {
             roomCode: code,
             phase: 'lobby',
             mySessionId: myId,
+            isHost: false,
           });
 
           await supabase.from('room_players').insert({
@@ -461,7 +462,7 @@ export function useMultiplayer() {
       };
       const curPlayers = new Map(useGameStore.getState().players);
       curPlayers.set(myId, guestPlayer);
-      useGameStore.setState({ phase: 'lobby', players: curPlayers, mySessionId: myId, roomCode: code });
+      useGameStore.setState({ phase: 'lobby', players: curPlayers, mySessionId: myId, roomCode: code, isHost: false });
 
       // Setup Supabase Realtime channel
       setupSupabaseChannel(code, myId, displayName, false);
@@ -584,7 +585,8 @@ export function useMultiplayer() {
   }, []);
 
   const sendStart = useCallback((levelId: number) => {
-    useGameStore.getState().setPhase('playing');
+    const state = useGameStore.getState();
+    state.setPhase('playing');
 
     if (realtimeChannel) {
       realtimeChannel.send({
@@ -592,9 +594,26 @@ export function useMultiplayer() {
         event: 'game_start',
         payload: { levelId },
       });
+      // Broadcast immediate raft_sync packet with phase: 'playing' to wake up all peers
+      realtimeChannel.send({
+        type: 'broadcast',
+        event: 'raft_sync',
+        payload: {
+          posX: state.bowl.posX,
+          posZ: state.bowl.posZ,
+          velX: state.bowl.velX,
+          velZ: state.bowl.velZ,
+          angle: state.bowl.angle,
+          angularVelocity: state.bowl.angularVelocity,
+          elapsedMs: state.elapsedMs,
+          phase: 'playing',
+          levelId,
+          hostId: state.mySessionId,
+        },
+      });
     }
 
-    const room = useGameStore.getState().room ?? activeRoom;
+    const room = state.room ?? activeRoom;
     room?.send('start', { levelId });
   }, []);
 
@@ -660,8 +679,7 @@ export function useMultiplayer() {
     // Ensures host and all peers share the exact identical coordinate perspective!
     const syncInterval = setInterval(() => {
       const state = useGameStore.getState();
-      const isHost = state.hostId ? state.hostId === state.mySessionId : true;
-      if (state.phase === 'playing' && state.roomCode && isHost && realtimeChannel) {
+      if (state.phase === 'playing' && state.roomCode && state.isHost && realtimeChannel) {
         realtimeChannel.send({
           type: 'broadcast',
           event: 'raft_sync',
@@ -673,6 +691,9 @@ export function useMultiplayer() {
             angle: state.bowl.angle,
             angularVelocity: state.bowl.angularVelocity,
             elapsedMs: state.elapsedMs,
+            phase: state.phase,
+            levelId: state.levelId,
+            hostId: state.mySessionId,
           },
         });
       }

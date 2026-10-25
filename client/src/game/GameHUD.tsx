@@ -99,7 +99,8 @@ export function GameHUD({ myPlayerId }: GameHUDProps) {
   // Requires at least 2 players for custom multiplayer rooms!
   const playerList = [...players.values()];
   const isMultiplayerRoom = Boolean(roomCode);
-  const isHost = myPlayerId === hostId || myPlayer?.seatIndex === 0;
+  const storeIsHost = useGameStore((s) => s.isHost);
+  const isHost = storeIsHost || (myPlayerId === hostId) || (myPlayer?.seatIndex === 0);
   const otherPlayers = playerList.filter((p) => p.id !== myPlayerId);
   const allOthersReady = otherPlayers.length > 0 && otherPlayers.every((p) => p.ready);
   const hasMinPlayers = !isMultiplayerRoom || playerList.length >= 2;

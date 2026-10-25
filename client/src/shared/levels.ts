@@ -83,7 +83,7 @@ export function getTrackCenterX(levelId: number, z: number): number {
       return Math.sin(dist * 0.048) * 5.4;
     case 4:
       // Wild torrent with tight chicanes
-      return Math.sin(dist * 0.045) * 5.0 + Math.cos(dist * 0.08) * 2.5;
+      return Math.sin(dist * 0.045) * 5.0 + Math.sin(dist * 0.08) * 2.5;
     case 5:
       // Epic grand canyon serpentine rapids
       return Math.sin(dist * 0.05) * 6.0 + Math.sin(dist * 0.11) * 2.2;
