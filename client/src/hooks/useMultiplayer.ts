@@ -188,9 +188,73 @@ export function useMultiplayer() {
       // 2. High-speed Broadcasts
       .on('broadcast', { event: 'fart' }, ({ payload }) => {
         addFartEvent(payload);
+
+        // Apply shared fart thrust impulse from remote peers!
+        const { mySessionId, bowl } = useGameStore.getState();
+        if (payload && payload.playerId !== mySessionId) {
+          const angle = payload.angle ?? Math.PI;
+          const thrustX = -Math.sin(angle) * PHYSICS.FART_IMPULSE * 0.45;
+          const thrustZ = -Math.cos(angle) * PHYSICS.FART_IMPULSE * 0.55;
+
+          const nextVx = bowl.velX + thrustX;
+          const nextVz = bowl.velZ + thrustZ;
+          const currentSpeed = Math.hypot(nextVx, nextVz);
+          const clampedSpeed = Math.min(PHYSICS.MAX_SPEED, currentSpeed);
+          const scale = currentSpeed > 0.001 ? clampedSpeed / currentSpeed : 1;
+
+          useGameStore.setState({
+            bowl: {
+              ...bowl,
+              velX: nextVx * scale,
+              velZ: nextVz * scale,
+            },
+          });
+        }
+      })
+      .on('broadcast', { event: 'raft_sync' }, ({ payload }) => {
+        if (!payload) return;
+        const { hostId, mySessionId, bowl } = useGameStore.getState();
+        // Host is authoritative for physics simulation
+        if (hostId && hostId === mySessionId) return;
+
+        const dist = Math.hypot(payload.posX - bowl.posX, payload.posZ - bowl.posZ);
+        if (dist > 3.0) {
+          // Snap immediately on large delta / reset
+          useGameStore.setState({
+            bowl: {
+              ...bowl,
+              posX: payload.posX,
+              posZ: payload.posZ,
+              velX: payload.velX,
+              velZ: payload.velZ,
+              angle: payload.angle,
+              angularVelocity: payload.angularVelocity ?? bowl.angularVelocity,
+            },
+            elapsedMs: payload.elapsedMs ?? useGameStore.getState().elapsedMs,
+          });
+        } else {
+          // Smooth high-speed convergence
+          useGameStore.setState({
+            bowl: {
+              ...bowl,
+              posX: bowl.posX + (payload.posX - bowl.posX) * 0.75,
+              posZ: bowl.posZ + (payload.posZ - bowl.posZ) * 0.75,
+              velX: payload.velX,
+              velZ: payload.velZ,
+              angle: bowl.angle + (payload.angle - bowl.angle) * 0.75,
+              angularVelocity: payload.angularVelocity ?? bowl.angularVelocity,
+            },
+            elapsedMs: payload.elapsedMs ?? useGameStore.getState().elapsedMs,
+          });
+        }
       })
       .on('broadcast', { event: 'steer' }, ({ payload }) => {
-        setSteerX(payload.dir);
+        if (payload?.dir !== undefined) {
+          setSteerX(payload.dir);
+        }
+        if (payload?.playerId) {
+          useGameStore.getState().movePlayerAngle(payload.playerId, (payload.dir || 0) * 0.15);
+        }
       })
       .on('broadcast', { event: 'player_join' }, ({ payload }) => {
         const { players, mySessionId } = useGameStore.getState();
@@ -227,8 +291,9 @@ export function useMultiplayer() {
         }
         useGameStore.getState().setPhase('playing');
       })
-      .on('broadcast', { event: 'game_restart' }, () => {
-        useGameStore.getState().restartCurrentLevel();
+      .on('broadcast', { event: 'game_restart' }, ({ payload }) => {
+        const reason = payload?.reason || 'Level Restarted!';
+        useGameStore.getState().triggerCrashAndAutoRestart(reason);
       })
       .on('broadcast', { event: 'next_level' }, ({ payload }) => {
         if (payload?.levelId) {
@@ -473,12 +538,13 @@ export function useMultiplayer() {
   // Send Side-by-Side Steer (-1 left, 0 center, +1 right)
   const sendSteer = useCallback((dir: number) => {
     setSteerX(dir);
+    const { mySessionId } = useGameStore.getState();
 
     if (realtimeChannel) {
       realtimeChannel.send({
         type: 'broadcast',
         event: 'steer',
-        payload: { dir },
+        payload: { dir, playerId: mySessionId },
       });
     }
   }, [setSteerX]);
@@ -532,14 +598,14 @@ export function useMultiplayer() {
     room?.send('start', { levelId });
   }, []);
 
-  const sendRestart = useCallback(() => {
-    useGameStore.getState().restartCurrentLevel();
+  const sendRestart = useCallback((reason?: string) => {
+    useGameStore.getState().triggerCrashAndAutoRestart(reason || 'Restart Requested');
 
     if (realtimeChannel) {
       realtimeChannel.send({
         type: 'broadcast',
         event: 'game_restart',
-        payload: {},
+        payload: { reason: reason || 'Restart Requested' },
       });
     }
 
@@ -572,6 +638,47 @@ export function useMultiplayer() {
     room?.leave();
     activeRoom = null;
     useGameStore.getState().disconnect();
+  }, []);
+
+  // ── Authoritative Host Raft Sync & Collision Callback Hook ──
+  useEffect(() => {
+    // 1. Wire collision callback from gameStore to broadcast restart to all peers
+    useGameStore.getState().setOnCollisionCallback(() => {
+      if (realtimeChannel) {
+        const { crashToast, roomCode } = useGameStore.getState();
+        if (roomCode) {
+          realtimeChannel.send({
+            type: 'broadcast',
+            event: 'game_restart',
+            payload: { reason: crashToast || 'Hit Obstacle!' },
+          });
+        }
+      }
+    });
+
+    // 2. High-frequency Authoritative Raft Position Broadcast (22 times/sec, every 45ms)
+    // Ensures host and all peers share the exact identical coordinate perspective!
+    const syncInterval = setInterval(() => {
+      const state = useGameStore.getState();
+      const isHost = state.hostId ? state.hostId === state.mySessionId : true;
+      if (state.phase === 'playing' && state.roomCode && isHost && realtimeChannel) {
+        realtimeChannel.send({
+          type: 'broadcast',
+          event: 'raft_sync',
+          payload: {
+            posX: state.bowl.posX,
+            posZ: state.bowl.posZ,
+            velX: state.bowl.velX,
+            velZ: state.bowl.velZ,
+            angle: state.bowl.angle,
+            angularVelocity: state.bowl.angularVelocity,
+            elapsedMs: state.elapsedMs,
+          },
+        });
+      }
+    }, 45);
+
+    return () => clearInterval(syncInterval);
   }, []);
 
   return { createRoom, joinRoom, sendFart, sendSteer, sendReady, sendStart, sendRestart, sendNextLevel, leaveRoom };

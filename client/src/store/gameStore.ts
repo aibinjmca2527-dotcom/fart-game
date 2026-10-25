@@ -133,6 +133,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // Instant crash and automatic restart on the same level without blocking modals!
   triggerCrashAndAutoRestart: (reason = 'Obstacle Collision') => {
+    // If already in spawn immunity / just crashed, ignore duplicate crash events
+    if (get().spawnImmunityMs > 900) return;
+
     soundManager.playCrash();
 
     // Clear farting states on all players
@@ -148,9 +151,9 @@ export const useGameStore = create<GameState>((set, get) => ({
       currentCheckpoint: -1,
       steerX: 0,
       isCrashed: true,
-      spawnImmunityMs: 1200,
+      spawnImmunityMs: 1500,
       crashToast: reason,
-      crashToastMs: 1600,
+      crashToastMs: 1800,
       phase: 'playing', // Immediately play on same level!
       players,
       fartEvents: [],
@@ -257,9 +260,12 @@ export const useGameStore = create<GameState>((set, get) => ({
       set({ spawnImmunityMs: Math.max(0, spawnImmunityMs - dt * 1000) });
     }
 
-    // If steering, move player around the tube
-    if (steerX !== 0 && mySessionId) {
-      movePlayerAngle(mySessionId, steerX * 2.8 * dt);
+    // If steering, move player around the tube AND apply direct lateral steering force to raft
+    if (steerX !== 0) {
+      if (mySessionId) {
+        movePlayerAngle(mySessionId, steerX * 2.8 * dt);
+      }
+      newBowl.velX += steerX * 4.5 * dt;
     }
 
     // Gentle river current carrying the tube downstream

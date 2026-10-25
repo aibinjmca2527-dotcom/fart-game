@@ -4,6 +4,8 @@ import { useGameStore } from '../store/gameStore';
 import { useMultiplayer } from '../hooks/useMultiplayer';
 import { LEVELS } from '../shared/levels';
 import { getSoloMaxUnlockedLevel } from '../lib/teamProgression';
+import { supabase } from '../lib/supabase';
+import { soundManager } from '../lib/audio';
 import styles from './Dashboard.module.css';
 
 interface DashboardProps {
@@ -11,10 +13,11 @@ interface DashboardProps {
 }
 
 export function Dashboard({ onEnterGame }: DashboardProps) {
-  const { profile, signOut } = useAuthStore();
+  const { user, profile, setProfile, signOut } = useAuthStore();
   const { createRoom, joinRoom } = useMultiplayer();
   const { setRoomCode } = useGameStore();
 
+  const displayName = profile?.display_name ?? 'Guest';
   const [view, setView] = useState<'home' | 'create' | 'join' | 'howto' | 'settings'>('home');
   const [joinCode, setJoinCode] = useState('');
   const [maxUnlockedLevel, setMaxUnlockedLevel] = useState(getSoloMaxUnlockedLevel());
@@ -25,7 +28,46 @@ export function Dashboard({ onEnterGame }: DashboardProps) {
   const [copied, setCopied] = useState(false);
   const [customName, setCustomName] = useState('');
 
-  const displayName = profile?.display_name ?? 'Guest';
+  // Settings state
+  const [settingsName, setSettingsName] = useState(displayName);
+  const [selectedAvatar, setSelectedAvatar] = useState(profile?.avatar_index ?? 0);
+  const [saveSuccess, setSaveSuccess] = useState('');
+
+  useEffect(() => {
+    if (profile?.display_name) {
+      setSettingsName(profile.display_name);
+    }
+    if (profile?.avatar_index !== undefined) {
+      setSelectedAvatar(profile.avatar_index);
+    }
+  }, [profile]);
+
+  const handleSaveProfile = async (avatarIdxToSave?: number) => {
+    const trimmed = settingsName.trim() || 'Guest';
+    const avIdx = avatarIdxToSave !== undefined ? avatarIdxToSave : selectedAvatar;
+    setSaveSuccess('');
+
+    try {
+      if (user) {
+        await supabase.from('profiles').upsert({
+          id: user.id,
+          display_name: trimmed,
+          avatar_index: avIdx,
+        });
+      }
+    } catch {
+      // offline / local fallback
+    }
+
+    setProfile({
+      id: profile?.id || user?.id || 'guest',
+      display_name: trimmed,
+      avatar_index: avIdx,
+    });
+
+    setSaveSuccess('✅ Profile saved successfully!');
+    setTimeout(() => setSaveSuccess(''), 2500);
+  };
 
   // Refresh unlocked level on mount
   useEffect(() => {
@@ -103,6 +145,19 @@ export function Dashboard({ onEnterGame }: DashboardProps) {
         ))}
       </div>
 
+      {/* Mobile Top Header (Visible on mobile screens) */}
+      <header className={styles.mobileHeader}>
+        <div className={styles.mobileBrand} onClick={() => setView('home')}>
+          <span className={styles.mobileBrandLogo}>🚽</span>
+          <span className={styles.mobileBrandTitle}>Fun Together</span>
+        </div>
+        <div className={styles.mobileUserPill} onClick={() => setView('settings')}>
+          <span style={{ fontSize: '18px' }}>{['🐻', '🐸', '🦛', '🦏'][profile?.avatar_index ?? 0]}</span>
+          <span className={styles.mobileUserName}>{displayName}</span>
+          <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px' }}>⚙️</span>
+        </div>
+      </header>
+
       <div className={styles.layout}>
         {/* Sidebar */}
         <aside className={styles.sidebar}>
@@ -118,7 +173,7 @@ export function Dashboard({ onEnterGame }: DashboardProps) {
               { id: 'home', icon: '🏠', label: 'Home' },
               { id: 'create', icon: '🎮', label: 'Create Party' },
               { id: 'join', icon: '🔗', label: 'Join Party' },
-              { id: 'howto', icon: '❓', label: 'How to Play' },
+              { id: 'howto', icon: '📖', label: 'How to Play' },
               { id: 'settings', icon: '⚙️', label: 'Settings' },
             ].map((item) => (
               <button
@@ -166,6 +221,16 @@ export function Dashboard({ onEnterGame }: DashboardProps) {
                   <div className={styles.actionIcon}>🔗</div>
                   <div className={styles.actionTitle}>Join Party</div>
                   <div className={styles.actionDesc}>Enter a friend's room code to jump straight in</div>
+                </div>
+                <div className={styles.actionCard} onClick={() => setView('howto')}>
+                  <div className={styles.actionIcon}>📖</div>
+                  <div className={styles.actionTitle}>How to Play</div>
+                  <div className={styles.actionDesc}>Controls, rocket farts, steering & obstacle dodging rules</div>
+                </div>
+                <div className={styles.actionCard} onClick={() => setView('settings')}>
+                  <div className={styles.actionIcon}>⚙️</div>
+                  <div className={styles.actionTitle}>Settings & Profile</div>
+                  <div className={styles.actionDesc}>Change your name, pick animal character & sound options</div>
                 </div>
               </div>
 
@@ -373,29 +438,132 @@ export function Dashboard({ onEnterGame }: DashboardProps) {
                   </tbody>
                 </table>
               </div>
+
+              <div style={{ marginTop: '24px', textAlign: 'center' }}>
+                <button
+                  className={styles.bigBtn}
+                  onClick={() => {
+                    setCreatedRoomCode(null);
+                    setRoomCode('');
+                    setView('create');
+                  }}
+                >
+                  🚀 Ready to Race! Create Party
+                </button>
+              </div>
             </div>
           )}
 
           {view === 'settings' && (
             <div className={styles.panelView}>
-              <h2 className={styles.panelTitle}>⚙️ Settings</h2>
-              <div className={styles.settingRow}>
-                <span>Fart Sound Effects</span>
-                <input type="range" min="0" max="100" defaultValue="100" />
+              <h2 className={styles.panelTitle}>⚙️ Settings & Profile</h2>
+              <p className={styles.panelSub}>Customize your display name, choose your chunky character, and adjust options.</p>
+
+              {saveSuccess && <div className={styles.successMsg}>{saveSuccess}</div>}
+
+              <div className={styles.settingsSection}>
+                <h3 className={styles.settingsSectionTitle}>👤 Racer Profile</h3>
+
+                <div className={styles.settingField}>
+                  <label className={styles.settingLabel}>Display Name</label>
+                  <div className={styles.nameInputRow}>
+                    <input
+                      className={styles.textInputFull}
+                      type="text"
+                      value={settingsName}
+                      onChange={(e) => setSettingsName(e.target.value)}
+                      placeholder="Enter display name"
+                      maxLength={24}
+                    />
+                    <button className={styles.saveNameBtn} onClick={() => handleSaveProfile()}>
+                      💾 Save Name
+                    </button>
+                  </div>
+                </div>
+
+                <div className={styles.settingField}>
+                  <label className={styles.settingLabel}>Choose Animal Character</label>
+                  <div className={styles.avatarGrid}>
+                    {[
+                      { idx: 0, emoji: '🐻', name: 'Bear' },
+                      { idx: 1, emoji: '🐸', name: 'Frog' },
+                      { idx: 2, emoji: '🦛', name: 'Hippo' },
+                      { idx: 3, emoji: '🦏', name: 'Rhino' },
+                    ].map((av) => (
+                      <button
+                        key={av.idx}
+                        type="button"
+                        className={`${styles.avatarCard} ${selectedAvatar === av.idx ? styles.avatarCardSelected : ''}`}
+                        onClick={() => {
+                          setSelectedAvatar(av.idx);
+                          handleSaveProfile(av.idx);
+                        }}
+                      >
+                        <span className={styles.avatarEmoji}>{av.emoji}</span>
+                        <span className={styles.avatarName}>{av.name}</span>
+                        {selectedAvatar === av.idx && <span className={styles.avatarCheck}>✓ Active</span>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
-              <div className={styles.settingRow}>
-                <span>Display Name</span>
-                <input
-                  className={styles.textInput}
-                  type="text"
-                  defaultValue={displayName}
-                  maxLength={24}
-                />
+
+              <div className={styles.settingsSection}>
+                <h3 className={styles.settingsSectionTitle}>🔊 Audio & Feedback</h3>
+                <div className={styles.settingRow}>
+                  <span>Fart Sound Effects</span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    defaultValue="100"
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      soundManager.setMuted(val === 0);
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className={styles.settingsActions}>
+                <button className={styles.secondaryBtn} onClick={() => setView('howto')}>
+                  📖 View How to Play Rules
+                </button>
+                <button className={styles.signOutBtnFull} onClick={signOut}>
+                  🚪 Sign Out
+                </button>
               </div>
             </div>
           )}
         </main>
       </div>
+
+      {/* Mobile Bottom Navigation Bar (Visible on mobile screens) */}
+      <nav className={styles.mobileBottomNav}>
+        {[
+          { id: 'home', icon: '🏠', label: 'Home' },
+          { id: 'create', icon: '🎮', label: 'Create' },
+          { id: 'join', icon: '🔗', label: 'Join' },
+          { id: 'howto', icon: '📖', label: 'Rules' },
+          { id: 'settings', icon: '⚙️', label: 'Settings' },
+        ].map((item) => (
+          <button
+            key={item.id}
+            className={`${styles.mobileNavBtn} ${view === item.id ? styles.mobileNavActive : ''}`}
+            onClick={() => {
+              setView(item.id as typeof view);
+              setError('');
+              if (item.id === 'create') {
+                setCreatedRoomCode(null);
+                setRoomCode('');
+              }
+            }}
+          >
+            <span className={styles.mobileNavIcon}>{item.icon}</span>
+            <span className={styles.mobileNavLabel}>{item.label}</span>
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }
