@@ -20,14 +20,18 @@ export function Bowl() {
   useFrame(() => {
     if (!groupRef.current || !tiltGroupRef.current) return;
 
-    // Smoothly lerp to authoritative position
+    // Smoothly lerp to authoritative position (snap instantly on reset / spawn)
     const target = new THREE.Vector3(bowl.posX, bowl.bobY, bowl.posZ);
-    groupRef.current.position.lerp(target, 0.35);
+    if (groupRef.current.position.distanceTo(target) > 3.5) {
+      groupRef.current.position.copy(target);
+    } else {
+      groupRef.current.position.lerp(target, 0.45);
+    }
 
     // Lerp yaw rotation (heading)
     const currentY = groupRef.current.rotation.y;
     const targetY = -bowl.angle;
-    groupRef.current.rotation.y += (targetY - currentY) * 0.3;
+    groupRef.current.rotation.y += (targetY - currentY) * 0.35;
 
     // Dynamic banking/roll tilt based on lateral velocity (steering side to side!)
     const targetRoll = -Math.max(-0.25, Math.min(0.25, bowl.velX * 0.035));

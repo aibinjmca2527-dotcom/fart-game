@@ -214,37 +214,45 @@ export function useMultiplayer() {
           useGameStore.setState({ hostId: payload.hostId });
         }
 
-        const bowl = state.bowl;
-        const dist = Math.hypot(payload.posX - bowl.posX, payload.posZ - bowl.posZ);
-        if (dist > 2.5) {
-          // Snap immediately on large delta / reset
-          useGameStore.setState({
-            bowl: {
-              ...bowl,
-              posX: payload.posX,
-              posZ: payload.posZ,
-              velX: payload.velX,
-              velZ: payload.velZ,
-              angle: payload.angle,
-              angularVelocity: payload.angularVelocity ?? bowl.angularVelocity,
-            },
-            elapsedMs: payload.elapsedMs ?? state.elapsedMs,
-          });
-        } else {
-          // Smooth high-speed convergence (0.85 lerp factor)
-          useGameStore.setState({
-            bowl: {
-              ...bowl,
-              posX: bowl.posX + (payload.posX - bowl.posX) * 0.85,
-              posZ: bowl.posZ + (payload.posZ - bowl.posZ) * 0.85,
-              velX: payload.velX,
-              velZ: payload.velZ,
-              angle: bowl.angle + (payload.angle - bowl.angle) * 0.85,
-              angularVelocity: payload.angularVelocity ?? bowl.angularVelocity,
-            },
-            elapsedMs: payload.elapsedMs ?? state.elapsedMs,
+        // Apply authoritative bowl coordinates directly from host
+        // Note: Three.js in Bowl.tsx already provides smooth 60 FPS lerp rendering!
+        const nextBowl = {
+          ...state.bowl,
+          posX: payload.posX,
+          posZ: payload.posZ,
+          velX: payload.velX,
+          velZ: payload.velZ,
+          angle: payload.angle,
+          angularVelocity: payload.angularVelocity ?? state.bowl.angularVelocity,
+        };
+
+        // Sync exact dynamic obstacle coordinates from authoritative host
+        const nextObstacles = payload.obstacles && Array.isArray(payload.obstacles) && payload.obstacles.length > 0
+          ? payload.obstacles
+          : state.obstacles;
+
+        // Sync other players' positions around tube
+        let nextPlayers = state.players;
+        if (payload.players && Array.isArray(payload.players)) {
+          nextPlayers = new Map(state.players);
+          payload.players.forEach((pSync: { id: string; angleAroundTube?: number; isFarting?: boolean }) => {
+            const existing = nextPlayers.get(pSync.id);
+            if (existing) {
+              nextPlayers.set(pSync.id, {
+                ...existing,
+                angleAroundTube: pSync.angleAroundTube ?? existing.angleAroundTube,
+                isFarting: pSync.isFarting ?? existing.isFarting,
+              });
+            }
           });
         }
+
+        useGameStore.setState({
+          bowl: nextBowl,
+          obstacles: nextObstacles,
+          players: nextPlayers,
+          elapsedMs: payload.elapsedMs ?? state.elapsedMs,
+        });
       })
       .on('broadcast', { event: 'steer' }, ({ payload }) => {
         if (payload?.dir !== undefined) {
@@ -609,6 +617,12 @@ export function useMultiplayer() {
           phase: 'playing',
           levelId,
           hostId: state.mySessionId,
+          obstacles: state.obstacles,
+          players: Array.from(state.players.values()).map((p) => ({
+            id: p.id,
+            angleAroundTube: p.angleAroundTube,
+            isFarting: p.isFarting,
+          })),
         },
       });
     }
@@ -664,8 +678,9 @@ export function useMultiplayer() {
     // 1. Wire collision callback from gameStore to broadcast restart to all peers
     useGameStore.getState().setOnCollisionCallback(() => {
       if (realtimeChannel) {
-        const { crashToast, roomCode } = useGameStore.getState();
-        if (roomCode) {
+        const { crashToast, roomCode, isHost } = useGameStore.getState();
+        // Only host broadcasts game_restart to prevent echo restart ping-pong loops
+        if (roomCode && isHost) {
           realtimeChannel.send({
             type: 'broadcast',
             event: 'game_restart',
@@ -675,8 +690,8 @@ export function useMultiplayer() {
       }
     });
 
-    // 2. High-frequency Authoritative Raft Position Broadcast (22 times/sec, every 45ms)
-    // Ensures host and all peers share the exact identical coordinate perspective!
+    // 2. High-frequency Authoritative Raft Position Broadcast (25 times/sec, every 40ms)
+    // Ensures host and all peers share the exact identical coordinate perspective and obstacles!
     const syncInterval = setInterval(() => {
       const state = useGameStore.getState();
       if (state.phase === 'playing' && state.roomCode && state.isHost && realtimeChannel) {
@@ -694,10 +709,16 @@ export function useMultiplayer() {
             phase: state.phase,
             levelId: state.levelId,
             hostId: state.mySessionId,
+            obstacles: state.obstacles,
+            players: Array.from(state.players.values()).map((p) => ({
+              id: p.id,
+              angleAroundTube: p.angleAroundTube,
+              isFarting: p.isFarting,
+            })),
           },
         });
       }
-    }, 45);
+    }, 40);
 
     return () => clearInterval(syncInterval);
   }, []);

@@ -28,10 +28,15 @@ export function FollowCamera() {
     const lookAhead = CAMERA_LOOK_AHEAD.clone().applyQuaternion(q);
     const desiredLook = bowlPos.clone().add(lookAhead);
 
-    // Smooth lerp
-    const lerpFactor = 1 - Math.pow(0.001, delta);
-    targetPos.current.lerp(desiredPos, lerpFactor * 0.85);
-    targetLook.current.lerp(desiredLook, lerpFactor * 0.85);
+    // Smooth lerp (snap immediately on reset / large delta)
+    if (targetPos.current.distanceTo(desiredPos) > 6.0) {
+      targetPos.current.copy(desiredPos);
+      targetLook.current.copy(desiredLook);
+    } else {
+      const lerpFactor = 1 - Math.pow(0.001, delta);
+      targetPos.current.lerp(desiredPos, lerpFactor * 0.85);
+      targetLook.current.lerp(desiredLook, lerpFactor * 0.85);
+    }
 
     camera.position.copy(targetPos.current);
     camera.lookAt(targetLook.current);

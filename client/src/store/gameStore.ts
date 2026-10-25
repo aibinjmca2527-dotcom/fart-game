@@ -245,8 +245,37 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   // Local physics step + obstacle collision detection
   stepLocalPhysics: (dt: number) => {
-    const { phase, steerX, bowl, levelId, mySessionId, movePlayerAngle, spawnImmunityMs, elapsedMs } = get();
+    const { phase, steerX, bowl, levelId, mySessionId, movePlayerAngle, spawnImmunityMs, elapsedMs, roomCode, isHost } = get();
     if (phase !== 'playing') return;
+
+    // In a custom multiplayer room, ONLY the host runs authoritative river physics & updates dynamic obstacles
+    const isAuthoritative = !roomCode || isHost;
+
+    if (!isAuthoritative) {
+      // Non-host guest: smoothly dead-reckon raft position using latest velocity from host
+      const predictedBowl = { ...bowl };
+      predictedBowl.posX += predictedBowl.velX * dt;
+      predictedBowl.posZ += predictedBowl.velZ * dt;
+      predictedBowl.angle += predictedBowl.angularVelocity * dt;
+
+      // Soft clamp within navigable river flume
+      const currentCenterlineX = getTrackCenterX(levelId, predictedBowl.posZ);
+      const maxSideDistance = 5.35;
+      if (predictedBowl.posX < currentCenterlineX - maxSideDistance) {
+        predictedBowl.posX = currentCenterlineX - maxSideDistance;
+      }
+      if (predictedBowl.posX > currentCenterlineX + maxSideDistance) {
+        predictedBowl.posX = currentCenterlineX + maxSideDistance;
+      }
+
+      // Allow local guest steering to rotate character around tube
+      if (steerX !== 0 && mySessionId) {
+        movePlayerAngle(mySessionId, steerX * 2.8 * dt);
+      }
+
+      set({ bowl: predictedBowl });
+      return;
+    }
 
     const level = LEVELS.find((l) => l.id === levelId) ?? LEVELS[0];
     const newBowl = { ...bowl };
@@ -312,16 +341,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     const leftLimit = currentCenterlineX - maxSideDistance;
     const rightLimit = currentCenterlineX + maxSideDistance;
 
-    // Collision checks are authoritative (run by host in multiplayer, or solo player)
-    const isAuthoritative = !get().roomCode || get().isHost;
-
-    if (isAuthoritative && spawnImmunityMs <= 0 && newBowl.posZ > 6) {
+    if (spawnImmunityMs <= 0 && newBowl.posZ > 6) {
       if (newBowl.posX <= leftLimit || newBowl.posX >= rightLimit) {
         get().triggerCrashAndAutoRestart('Hit River Side Wall!');
         return;
       }
     } else {
-      // Soft clamp during spawn immunity or for non-host
+      // Soft clamp during spawn immunity
       if (newBowl.posX < leftLimit) newBowl.posX = leftLimit;
       if (newBowl.posX > rightLimit) newBowl.posX = rightLimit;
     }
@@ -361,14 +387,15 @@ export const useGameStore = create<GameState>((set, get) => ({
 
     // ── Check Obstacle Collisions (Generous hitboxes give players advantage for thrilling near-misses) ──
     // Checks only for authoritative host/solo player as soon as boat moves past spawn (z > 8)
-    if (isAuthoritative && spawnImmunityMs <= 0 && newBowl.posZ > 8) {
+    if (spawnImmunityMs <= 0 && newBowl.posZ > 8) {
       const tubeRadius = 0.85; // Forgiving core radius gives players dodging advantage
       for (let i = 0; i < updatedObstacles.length; i++) {
         const liveObs = updatedObstacles[i];
         const cfg = level.obstacles[i];
         if (!cfg) continue;
 
-        const dz = Math.abs(newBowl.posZ - liveObs.z);
+        const dzSigned = newBowl.posZ - liveObs.z;
+        const dz = Math.abs(dzSigned);
 
         // Gates: doorway posts collision
         if (cfg.kind === 'gate_pair' || cfg.kind === 'narrow_passage') {
@@ -394,8 +421,8 @@ export const useGameStore = create<GameState>((set, get) => ({
           const halfThick = 0.12;
           const rot = liveObs.rotation;
           const dx = newBowl.posX - liveObs.x;
-          const localX = dx * Math.cos(-rot) - dz * Math.sin(-rot);
-          const localZ = dx * Math.sin(-rot) + dz * Math.cos(-rot);
+          const localX = dx * Math.cos(-rot) - dzSigned * Math.sin(-rot);
+          const localZ = dx * Math.sin(-rot) + dzSigned * Math.cos(-rot);
           if (Math.abs(localZ) < (tubeRadius + halfThick) && Math.abs(localX) < (halfW + tubeRadius * 0.5)) {
             get().triggerCrashAndAutoRestart('Hit Spinning Gate!');
             return;
