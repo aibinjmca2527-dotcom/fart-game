@@ -710,17 +710,20 @@
 
   .mobileBottomNav {
     display: grid;
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(6, 1fr);
     position: fixed;
     bottom: 0;
     left: 0;
     right: 0;
-    height: 64px;
+    height: 62px;
     background: rgba(15, 23, 42, 0.96);
     backdrop-filter: blur(16px);
     border-top: 1px solid rgba(255, 255, 255, 0.12);
     z-index: 100;
     box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.5);
+    padding: 0 2px;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-sizing: border-box;
   }
 
   .mobileNavBtn {
@@ -731,11 +734,11 @@
     background: transparent;
     border: none;
     color: rgba(255, 255, 255, 0.55);
-    font-size: 11px;
-    font-weight: 600;
-    gap: 3px;
     cursor: pointer;
     transition: all 0.15s;
+    padding: 4px 1px;
+    width: 100%;
+    overflow: hidden;
   }
 
   .mobileNavBtn:active {
@@ -743,7 +746,22 @@
   }
 
   .mobileNavIcon {
-    font-size: 20px;
+    font-size: 19px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .mobileNavLabel {
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.1;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    max-width: 100%;
+    margin-top: 2px;
   }
 
   .mobileNavActive {

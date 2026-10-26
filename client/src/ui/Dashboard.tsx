@@ -555,19 +555,24 @@ export function Dashboard({ onEnterGame }: DashboardProps) {
           <TipSection />
 
           {/* Website Footer */}
-          <Footer onOpenBugReport={() => setView('bugs')} />
+          <Footer
+            onOpenBugReport={() => setView('bugs')}
+            onOpenTip={() => {
+              document.getElementById('tip-the-developer')?.scrollIntoView({ behavior: 'smooth' });
+            }}
+          />
         </main>
       </div>
 
       {/* Mobile Bottom Navigation Bar (Visible on mobile screens) */}
-      <nav className={styles.mobileBottomNav}>
+      <nav className={styles.mobileBottomNav} aria-label="Mobile Navigation">
         {[
           { id: 'home', icon: '🏠', label: 'Home' },
           { id: 'create', icon: '🎮', label: 'Create' },
           { id: 'join', icon: '🔗', label: 'Join' },
           { id: 'howto', icon: '📖', label: 'Rules' },
           { id: 'settings', icon: '⚙️', label: 'Settings' },
-          { id: 'bugs', icon: '🐛', label: 'Bugs' },
+          { id: 'bugs', icon: '🐛', label: 'Bug' },
         ].map((item) => (
           <button
             key={item.id}

@@ -133,7 +133,12 @@ export function AuthPage() {
       <TipSection />
 
       {/* Website Footer */}
-      <Footer onOpenBugReport={() => setMode('bug')} />
+      <Footer
+        onOpenBugReport={() => setMode('bug')}
+        onOpenTip={() => {
+          document.getElementById('tip-the-developer')?.scrollIntoView({ behavior: 'smooth' });
+        }}
+      />
     </div>
   );
 }

@@ -1,15 +1,89 @@
 .footer {
   width: 100%;
-  padding: 24px 20px 32px;
+  padding: 28px 16px 40px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
-  margin-top: 24px;
+  margin-top: 32px;
   text-align: center;
   color: rgba(255, 255, 255, 0.5);
   font-size: 13px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  gap: 16px;
+}
+
+/* Two distinct footer action sections: Bug Report & Tip Developer */
+.footerSections {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  width: 100%;
+  max-width: 680px;
+}
+
+@media (max-width: 600px) {
+  .footerSections {
+    grid-template-columns: 1fr;
+  }
+}
+
+.footerSectionCard {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1.5px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  color: inherit;
+  font-family: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.footerSectionCard:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: #FFD700;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.footerCardIcon {
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
+.footerCardContent {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.footerCardTitle {
+  color: #FFD700;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.footerCardDesc {
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.footerCardArrow {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 16px;
+  transition: transform 0.2s;
+}
+
+.footerSectionCard:hover .footerCardArrow {
+  color: #FFD700;
+  transform: translateX(3px);
 }
 
 .footerBrand {
@@ -19,28 +93,7 @@
   color: #FFD700;
   font-weight: 800;
   font-size: 15px;
-}
-
-.footerLinks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  justify-content: center;
-}
-
-.footerLink {
-  color: rgba(255, 255, 255, 0.6);
-  text-decoration: none;
-  background: none;
-  border: none;
-  font-family: inherit;
-  font-size: 13px;
-  cursor: pointer;
-  transition: color 0.15s;
-}
-
-.footerLink:hover {
-  color: #FFD700;
+  margin-top: 8px;
 }
 
 .copyright {

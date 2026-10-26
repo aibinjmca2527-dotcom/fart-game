@@ -12,7 +12,7 @@ export function TipSection({ upiId: propUpiId }: TipSectionProps) {
   const [showQR, setShowQR] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
 
-  // Retrieve configurable UPI ID with fallback placeholder as requested
+  // Retrieve configurable UPI ID with fallback
   const targetUpiId =
     propUpiId ||
     import.meta.env.VITE_DEVELOPER_UPI_ID ||
@@ -24,21 +24,48 @@ export function TipSection({ upiId: propUpiId }: TipSectionProps) {
 
   const [qrType, setQrType] = useState<'dynamic' | 'official'>('dynamic');
 
-  // Standard UPI payment deep link dynamically generated with developer UPI ID and amount
-  const upiDeepLink = `upi://pay?pa=${encodeURIComponent(targetUpiId)}&pn=${encodeURIComponent(targetName)}&am=${selectedAmount}&cu=INR&tn=${encodeURIComponent('Developer Tip')}`;
+  // Standard generic UPI deep link
+  const genericUpiLink = `upi://pay?pa=${encodeURIComponent(targetUpiId)}&pn=${encodeURIComponent(targetName)}&am=${selectedAmount}&cu=INR&tn=${encodeURIComponent('Developer Tip')}`;
 
-  // Dedicated Google Pay / UPI intent handler
-  const handleOpenPaymentApp = () => {
-    // Check if on mobile or desktop
+  // Direct Google Pay Android Intent — target package ensures Android opens Google Pay directly, bypassing WhatsApp
+  const gpayAndroidIntent = `intent://pay?pa=${encodeURIComponent(targetUpiId)}&pn=${encodeURIComponent(targetName)}&am=${selectedAmount}&cu=INR&tn=${encodeURIComponent('Developer Tip')}#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;end;`;
+
+  // Direct Google Pay iOS Schemes — targets Google Pay app specifically on iOS
+  const gpayIosLink = `gpay://upi/pay?pa=${encodeURIComponent(targetUpiId)}&pn=${encodeURIComponent(targetName)}&am=${selectedAmount}&cu=INR&tn=${encodeURIComponent('Developer Tip')}`;
+  const tezIosLink = `tez://upi/pay?pa=${encodeURIComponent(targetUpiId)}&pn=${encodeURIComponent(targetName)}&am=${selectedAmount}&cu=INR&tn=${encodeURIComponent('Developer Tip')}`;
+
+  // Direct Google Pay button click handler
+  const handleOpenGooglePay = () => {
+    const ua = navigator.userAgent || '';
+    const isAndroid = /Android/i.test(ua);
+    const isIOS = /iPhone|iPad|iPod/i.test(ua);
+
+    if (isAndroid) {
+      // Android: launch intent targeting Google Pay package directly (com.google.android.apps.nbu.paisa.user)
+      window.location.href = gpayAndroidIntent;
+    } else if (isIOS) {
+      // iOS: try gpay:// scheme, then fallback to tez:// scheme
+      const start = Date.now();
+      window.location.href = gpayIosLink;
+      setTimeout(() => {
+        if (Date.now() - start < 1500) {
+          window.location.href = tezIosLink;
+        }
+      }, 1000);
+    } else {
+      // Desktop: auto reveal QR code so user can scan with Google Pay
+      setShowQR(true);
+      window.location.href = genericUpiLink;
+    }
+  };
+
+  // Other UPI Apps handler (PhonePe, Paytm, etc.)
+  const handleOpenOtherUpi = () => {
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
     if (!isMobile) {
-      // On desktop, auto-reveal the QR code so the user can easily scan with their phone
       setShowQR(true);
     }
-
-    // Try navigating to standard UPI protocol handler
-    window.location.href = upiDeepLink;
+    window.location.href = genericUpiLink;
   };
 
   const handleCopyUpi = () => {
@@ -47,10 +74,10 @@ export function TipSection({ upiId: propUpiId }: TipSectionProps) {
     setTimeout(() => setCopied(false), 2200);
   };
 
-  const dynamicQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&format=svg&data=${encodeURIComponent(upiDeepLink)}`;
+  const dynamicQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&format=svg&data=${encodeURIComponent(genericUpiLink)}`;
 
   return (
-    <section className={styles.tipSection} aria-label="Tip the Developer">
+    <section id="tip-the-developer" className={styles.tipSection} aria-label="Tip the Developer">
       <div className={styles.tipHeader}>
         <h3 className={styles.title}>
           <span>☕</span>
@@ -85,37 +112,50 @@ export function TipSection({ upiId: propUpiId }: TipSectionProps) {
 
       {/* Action Buttons */}
       <div className={styles.actionsContainer}>
+        {/* Primary Direct Google Pay Button */}
         <button
           type="button"
-          className={styles.payPrimaryBtn}
-          onClick={handleOpenPaymentApp}
-          title={`Pay ₹${selectedAmount} via Google Pay or UPI App`}
+          className={styles.gpayDirectBtn}
+          onClick={handleOpenGooglePay}
+          title={`Pay ₹${selectedAmount} directly with Google Pay to ${targetName}`}
         >
-          <span style={{ fontSize: '20px' }}>⚡</span>
-          <span>Pay ₹{selectedAmount} with Google Pay / UPI</span>
+          <span className={styles.gpayLogo}>GPay</span>
+          <span>Pay ₹{selectedAmount} with Google Pay</span>
         </button>
 
         <div className={styles.buttonRow}>
           <button
             type="button"
             className={styles.secondaryBtn}
+            onClick={handleOpenOtherUpi}
+            title="Pay with other UPI apps like PhonePe, Paytm, BHIM"
+          >
+            <span>⚡</span>
+            <span>Other UPI Apps</span>
+          </button>
+
+          <button
+            type="button"
+            className={styles.secondaryBtn}
             onClick={() => setShowQR((prev) => !prev)}
+            title="Show or hide QR Code"
           >
             <span>📱</span>
-            <span>{showQR ? 'Hide QR Code' : 'Scan QR Code Fallback'}</span>
+            <span>{showQR ? 'Hide QR Code' : 'Show QR Code'}</span>
           </button>
 
           <button
             type="button"
             className={styles.secondaryBtn}
             onClick={handleCopyUpi}
+            title="Copy developer UPI ID to clipboard"
           >
             <span>📋</span>
-            <span>{copied ? '✅ UPI ID Copied!' : 'Copy UPI ID'}</span>
+            <span>{copied ? '✅ Copied!' : 'Copy UPI ID'}</span>
           </button>
         </div>
 
-        {/* QR Code Fallback Card */}
+        {/* QR Code Container */}
         {showQR && (
           <div className={styles.qrContainer}>
             <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
@@ -148,7 +188,7 @@ export function TipSection({ upiId: propUpiId }: TipSectionProps) {
             </div>
             <p className={styles.qrInstruction}>
               {qrType === 'dynamic' ? (
-                <>Scan using <strong>Google Pay</strong>, <strong>PhonePe</strong>, or <strong>Paytm</strong> to pay <strong>₹{selectedAmount}</strong> to <strong>{targetName}</strong>.</>
+                <>Scan with <strong>Google Pay</strong> to pay <strong>₹{selectedAmount}</strong> directly to <strong>{targetName}</strong>.</>
               ) : (
                 <>Official <strong>Google Pay</strong> QR for <strong>{targetName}</strong> ({targetUpiId}).</>
               )}
@@ -164,7 +204,7 @@ export function TipSection({ upiId: propUpiId }: TipSectionProps) {
         </div>
 
         <p className={styles.disclaimer}>
-          🔒 Secure & direct: Payments happen entirely inside your chosen payment app. We never collect or store banking credentials, debit card info, or UPI PINs. Opening an app does not execute payment automatically until confirmed by you.
+          🔒 Secure & direct: Opens Google Pay directly to transfer to {targetName}. No middleman, 100% direct UPI transfer.
         </p>
       </div>
     </section>
