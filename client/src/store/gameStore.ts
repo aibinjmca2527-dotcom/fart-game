@@ -187,29 +187,69 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().onCollisionCallback?.();
   },
 
-  // Move player around the perimeter of the circular tube within their designated sector (1/2, 1/3, 1/4)
+  // Move player around the perimeter of the circular tube.
+  // All players can move FULLY around the entire tube (360 degrees).
+  // The only constraint is players cannot pass through each other:
+  // if a player touches another player, they stop at the contact boundary.
   movePlayerAngle: (playerId, deltaAngle) => {
     const { players } = get();
     const p = players.get(playerId);
-    if (!p) return;
+    if (!p || deltaAngle === 0) return;
 
-    // Sector allocation strictly enforced:
-    // 2 players: 1/2 tube (180 deg)
-    // 3 players: 1/3 tube (120 deg)
-    // 4 players: 1/4 tube (90 deg)
-    const numPlayers = Math.max(1, Math.min(4, players.size));
-    const sectorSpan = (Math.PI * 2) / numPlayers;
-    const maxOffsetFromCenter = (sectorSpan / 2) * 0.88;
+    const TWO_PI = Math.PI * 2;
+    // Character contact separation on tube perimeter:
+    // Tube radius = 1.05m, character width ~ 0.45m => 0.45 / 1.05 ≈ 0.43 rad
+    const MIN_PLAYER_DISTANCE = 0.44; // in radians (~25.2 degrees)
 
-    const seatIdx = p.seatIndex ?? 0;
-    const centerAngle = getSectorCenterAngle(seatIdx, numPlayers);
+    // Normalize moving player's angle to [0, 2π)
+    const currentAngle = (((p.angleAroundTube ?? Math.PI) % TWO_PI) + TWO_PI) % TWO_PI;
 
-    let diff = ((p.angleAroundTube ?? centerAngle) - centerAngle) % (Math.PI * 2);
-    if (diff > Math.PI) diff -= Math.PI * 2;
-    if (diff < -Math.PI) diff += Math.PI * 2;
+    // Collect angles of all other connected players on the tube
+    const otherAngles: number[] = [];
+    players.forEach((otherP, id) => {
+      if (id !== playerId && otherP.connected !== false) {
+        const otherAngle = otherP.angleAroundTube ?? getSectorCenterAngle(otherP.seatIndex ?? 0, players.size);
+        otherAngles.push((((otherAngle % TWO_PI) + TWO_PI) % TWO_PI));
+      }
+    });
 
-    const newOffset = Math.max(-maxOffsetFromCenter, Math.min(maxOffsetFromCenter, diff + deltaAngle));
-    const nextAngle = (((centerAngle + newOffset) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+    let allowedDelta = deltaAngle;
+
+    if (otherAngles.length > 0) {
+      if (deltaAngle > 0) {
+        // Moving clockwise: find the closest other player ahead in clockwise direction
+        let minCwDist = TWO_PI;
+        for (const oa of otherAngles) {
+          let cwDist = (oa - currentAngle + TWO_PI) % TWO_PI;
+          if (cwDist <= 0.0001) cwDist = TWO_PI;
+          if (cwDist < minCwDist) {
+            minCwDist = cwDist;
+          }
+        }
+
+        // Maximum clockwise movement allowed before touching the player ahead
+        const maxForward = Math.max(0, minCwDist - MIN_PLAYER_DISTANCE);
+        allowedDelta = Math.min(deltaAngle, maxForward);
+      } else if (deltaAngle < 0) {
+        // Moving counter-clockwise: find the closest other player behind in counter-clockwise direction
+        let minCcwDist = TWO_PI;
+        for (const oa of otherAngles) {
+          let ccwDist = (currentAngle - oa + TWO_PI) % TWO_PI;
+          if (ccwDist <= 0.0001) ccwDist = TWO_PI;
+          if (ccwDist < minCcwDist) {
+            minCcwDist = ccwDist;
+          }
+        }
+
+        // Maximum counter-clockwise movement allowed before touching the player behind
+        const maxBackward = Math.max(0, minCcwDist - MIN_PLAYER_DISTANCE);
+        allowedDelta = Math.max(deltaAngle, -maxBackward);
+      }
+    }
+
+    if (Math.abs(allowedDelta) < 0.00001) return;
+
+    const nextAngle = (((currentAngle + allowedDelta) % TWO_PI) + TWO_PI) % TWO_PI;
 
     const updated = new Map(players);
     updated.set(playerId, { ...p, angleAroundTube: nextAngle });

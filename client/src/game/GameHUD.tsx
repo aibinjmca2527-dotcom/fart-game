@@ -420,7 +420,7 @@ export function GameHUD({ myPlayerId }: GameHUDProps) {
       {/* Onscreen Controls for Gameplay (Continuous Move on Tube + Continuous Directional Fart) */}
       {phase === 'playing' && (
         <div className={styles.controls}>
-          {/* Move Counter-Clockwise around Tube within sector */}
+          {/* Move Counter-Clockwise around Tube */}
           <button
             className={styles.steerBtn}
             onPointerDown={(e) => startSteer(-1, e)}
@@ -447,7 +447,7 @@ export function GameHUD({ myPlayerId }: GameHUDProps) {
             <span className={styles.fartLabel}>FART!</span>
           </button>
 
-          {/* Move Clockwise around Tube within sector */}
+          {/* Move Clockwise around Tube */}
           <button
             className={styles.steerBtn}
             onPointerDown={(e) => startSteer(1, e)}
