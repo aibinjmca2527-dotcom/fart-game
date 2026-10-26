@@ -1,11 +1,14 @@
 .page {
   min-height: 100dvh;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   background: linear-gradient(135deg, #0a0a2e 0%, #0d2050 40%, #1a0a3e 100%);
   font-family: 'Nunito', 'Segoe UI', sans-serif;
-  padding: 20px;
+  padding: 40px 20px 24px;
+  overflow-y: auto;
+  box-sizing: border-box;
 }
 
 .card {
@@ -13,11 +16,12 @@
   backdrop-filter: blur(20px);
   border: 1px solid rgba(255,255,255,0.12);
   border-radius: 28px;
-  padding: 40px 36px;
+  padding: 36px 32px;
   width: 100%;
-  max-width: 420px;
+  max-width: 460px;
   text-align: center;
   box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 80px rgba(100,50,200,0.15);
+  box-sizing: border-box;
 }
 
 .logo {

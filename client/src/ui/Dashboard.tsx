@@ -6,6 +6,9 @@ import { LEVELS } from '../shared/levels';
 import { getSoloMaxUnlockedLevel } from '../lib/teamProgression';
 import { supabase } from '../lib/supabase';
 import { soundManager } from '../lib/audio';
+import { BugReportForm } from './BugReportForm';
+import { TipSection } from './TipSection';
+import { Footer } from './Footer';
 import styles from './Dashboard.module.css';
 
 interface DashboardProps {
@@ -18,7 +21,7 @@ export function Dashboard({ onEnterGame }: DashboardProps) {
   const { setRoomCode } = useGameStore();
 
   const displayName = profile?.display_name ?? 'Guest';
-  const [view, setView] = useState<'home' | 'create' | 'join' | 'howto' | 'settings'>('home');
+  const [view, setView] = useState<'home' | 'create' | 'join' | 'howto' | 'settings' | 'bugs'>('home');
   const [joinCode, setJoinCode] = useState('');
   const [maxUnlockedLevel, setMaxUnlockedLevel] = useState(getSoloMaxUnlockedLevel());
   const [selectedLevel, setSelectedLevel] = useState(1);
@@ -175,6 +178,7 @@ export function Dashboard({ onEnterGame }: DashboardProps) {
               { id: 'join', icon: '🔗', label: 'Join Party' },
               { id: 'howto', icon: '📖', label: 'How to Play' },
               { id: 'settings', icon: '⚙️', label: 'Settings' },
+              { id: 'bugs', icon: '🐛', label: 'Report Bug' },
             ].map((item) => (
               <button
                 key={item.id}
@@ -231,6 +235,11 @@ export function Dashboard({ onEnterGame }: DashboardProps) {
                   <div className={styles.actionIcon}>⚙️</div>
                   <div className={styles.actionTitle}>Settings & Profile</div>
                   <div className={styles.actionDesc}>Change your name, pick animal character & sound options</div>
+                </div>
+                <div className={styles.actionCard} onClick={() => setView('bugs')}>
+                  <div className={styles.actionIcon}>🐛</div>
+                  <div className={styles.actionTitle}>Report a Bug</div>
+                  <div className={styles.actionDesc}>Found an issue? Send us a description & screenshot</div>
                 </div>
               </div>
 
@@ -535,6 +544,18 @@ export function Dashboard({ onEnterGame }: DashboardProps) {
               </div>
             </div>
           )}
+
+          {view === 'bugs' && (
+            <div className={styles.panelView}>
+              <BugReportForm />
+            </div>
+          )}
+
+          {/* Tip the Developer Section (above footer) */}
+          <TipSection />
+
+          {/* Website Footer */}
+          <Footer onOpenBugReport={() => setView('bugs')} />
         </main>
       </div>
 
@@ -546,6 +567,7 @@ export function Dashboard({ onEnterGame }: DashboardProps) {
           { id: 'join', icon: '🔗', label: 'Join' },
           { id: 'howto', icon: '📖', label: 'Rules' },
           { id: 'settings', icon: '⚙️', label: 'Settings' },
+          { id: 'bugs', icon: '🐛', label: 'Bugs' },
         ].map((item) => (
           <button
             key={item.id}

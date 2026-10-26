@@ -533,24 +533,72 @@ function ObstacleMesh({
         </mesh>
       );
 
-    case 'spinning_gate':
+    case 'spinning_gate': {
+      const stickW = config.width ?? 8;
+      const halfW = stickW / 2;
       return (
-        <group position={[obs.x, 1.0, obs.z]} rotation={[0, obs.rotation ?? 0, 0]}>
-          <mesh castShadow>
-            <boxGeometry args={[config.width ?? 8, 0.35, 0.35]} />
-            <meshStandardMaterial
-              color="#FF9F1C"
-              roughness={0.4}
-              emissive="#FF9F1C"
-              emissiveIntensity={0.25}
-            />
+        <group position={[obs.x, 0, obs.z]}>
+          {/* Fixed Central Anchor Post rooted in riverbed (-0.75) extending through water (-0.05) */}
+          <mesh position={[0, -0.1, 0]}>
+            <cylinderGeometry args={[0.26, 0.32, 1.3, 16]} />
+            <meshStandardMaterial color="#2B2D42" roughness={0.7} metalness={0.6} />
           </mesh>
-          <mesh position={[0, -0.7, 0]}>
-            <cylinderGeometry args={[0.15, 0.18, 1.4, 8]} />
-            <meshStandardMaterial color="#4A4E69" roughness={0.7} />
+          {/* Water Splash / Foam Ring around Central Pivot */}
+          <mesh position={[0, -0.04, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.3, 0.7, 24]} />
+            <meshBasicMaterial color="#FFFFFF" transparent opacity={0.35} />
           </mesh>
+
+          {/* Rotating Stick Assembly (Visibly touches & cuts through the water surface) */}
+          <group rotation={[0, obs.rotation ?? 0, 0]}>
+            {/* Central Spindle Hub */}
+            <mesh position={[0, 0.24, 0]} castShadow>
+              <cylinderGeometry args={[0.38, 0.42, 0.32, 16]} />
+              <meshStandardMaterial color="#FF9F1C" roughness={0.35} metalness={0.4} />
+            </mesh>
+
+            {/* Main Rotating Beam — Bottom dips directly below water level (-0.05) to -0.14 */}
+            <mesh position={[0, 0.08, 0]} castShadow>
+              <boxGeometry args={[stickW, 0.44, 0.36]} />
+              <meshStandardMaterial
+                color="#FF9F1C"
+                roughness={0.35}
+                emissive="#FF9F1C"
+                emissiveIntensity={0.3}
+              />
+            </mesh>
+
+            {/* High-visibility Warning Stripes / Bumpers on the Beam */}
+            {[-halfW + 1.2, -halfW + 2.4, halfW - 2.4, halfW - 1.2].map((xPos, idx) => (
+              <mesh key={idx} position={[xPos, 0.08, 0]}>
+                <boxGeometry args={[0.4, 0.46, 0.38]} />
+                <meshStandardMaterial color="#111111" roughness={0.5} />
+              </mesh>
+            ))}
+
+            {/* Left & Right End Water Skimmers / Buoyancy Floats dipping into water */}
+            <mesh position={[-halfW + 0.2, -0.02, 0]} castShadow>
+              <cylinderGeometry args={[0.26, 0.26, 0.4, 12]} />
+              <meshStandardMaterial color="#E63946" roughness={0.4} />
+            </mesh>
+            <mesh position={[halfW - 0.2, -0.02, 0]} castShadow>
+              <cylinderGeometry args={[0.26, 0.26, 0.4, 12]} />
+              <meshStandardMaterial color="#E63946" roughness={0.4} />
+            </mesh>
+
+            {/* Water Contact Foam at Rotating Outer Tips */}
+            <mesh position={[-halfW + 0.2, -0.04, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[0.15, 0.45, 16]} />
+              <meshBasicMaterial color="#FFFFFF" transparent opacity={0.4} />
+            </mesh>
+            <mesh position={[halfW - 0.2, -0.04, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[0.15, 0.45, 16]} />
+              <meshBasicMaterial color="#FFFFFF" transparent opacity={0.4} />
+            </mesh>
+          </group>
         </group>
       );
+    }
 
     case 'moving_barrier':
       return (
