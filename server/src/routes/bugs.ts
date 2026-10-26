@@ -163,8 +163,37 @@ async function commitToGitHub(options: {
   return { ok: true, status: res.status, data };
 }
 
+// Rate limiter to prevent spamming bug reports
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const MAX_REQUESTS_PER_WINDOW = 15; // Max 15 reports per IP per window
+
+function isRateLimited(ip: string): boolean {
+  if (process.env.NODE_ENV === 'test') return false;
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip);
+  if (!entry || now > entry.resetTime) {
+    rateLimitMap.set(ip, { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS });
+    return false;
+  }
+  if (entry.count >= MAX_REQUESTS_PER_WINDOW) {
+    return true;
+  }
+  entry.count += 1;
+  return false;
+}
+
 // POST /api/bugs
 bugsRouter.post('/', async (req: Request, res: Response) => {
+  const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+  if (isRateLimited(clientIp)) {
+    res.status(429).json({
+      ok: false,
+      error: 'Too many bug reports submitted. Please wait a few minutes before trying again.',
+    });
+    return;
+  }
+
   try {
     const {
       description,
@@ -417,6 +446,7 @@ bugsRouter.get('/', async (_req: Request, res: Response) => {
       reports,
     });
   } catch (err: unknown) {
-    res.status(500).json({ ok: false, error: String(err) });
+    console.error('[Bugs] Error listing bug reports:', err);
+    res.status(500).json({ ok: false, error: 'Internal server error while retrieving reports.' });
   }
 });

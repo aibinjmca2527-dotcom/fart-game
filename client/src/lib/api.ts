@@ -104,7 +104,7 @@ export async function submitBugReport(input: BugReportInput): Promise<BugReportR
           ok: true,
           reportId,
           filename: `${reportId}.md`,
-          message: 'Bug report submitted and saved to database successfully!',
+          message: 'Bug report submitted successfully! Thank you for helping improve the game.',
         };
       } else {
         console.warn('[Bugs] Supabase insert warning:', dbError.message);
@@ -144,7 +144,7 @@ export async function submitBugReport(input: BugReportInput): Promise<BugReportR
       ok: true,
       reportId,
       filename: `${reportId}.md`,
-      message: 'Bug report received and queued locally!',
+      message: 'Bug report submitted successfully! Thank you for helping improve the game.',
     };
   } catch {
     return {

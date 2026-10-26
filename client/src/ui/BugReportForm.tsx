@@ -16,7 +16,6 @@ export function BugReportForm({ onSuccess, compact = false }: BugReportFormProps
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [reportId, setReportId] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -79,9 +78,6 @@ export function BugReportForm({ onSuccess, compact = false }: BugReportFormProps
       }
 
       setSuccess(result.message || 'Report submitted successfully! Thank you for helping improve the game.');
-      if (result.reportId) {
-        setReportId(result.reportId);
-      }
       setDescription('');
       handleRemoveImage();
       if (onSuccess) {
@@ -112,14 +108,9 @@ export function BugReportForm({ onSuccess, compact = false }: BugReportFormProps
         <div className={styles.successMsg}>
           <div className={styles.successTitle}>
             <span>✅</span>
-            <span>Report Saved Successfully!</span>
+            <span>Bug Reported!</span>
           </div>
-          <div>{success}</div>
-          {reportId && (
-            <div className={styles.reportIdBadge}>
-              Report File: <strong>{reportId}.md</strong> (stored in <code>bugs/</code>)
-            </div>
-          )}
+          <div>Thank you for helping us improve the game! Our team will fix it right away.</div>
         </div>
       )}
 

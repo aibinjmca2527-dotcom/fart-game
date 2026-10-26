@@ -59,14 +59,6 @@ export function TipSection({ upiId: propUpiId }: TipSectionProps) {
     }
   };
 
-  // Other UPI Apps handler (PhonePe, Paytm, etc.)
-  const handleOpenOtherUpi = () => {
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (!isMobile) {
-      setShowQR(true);
-    }
-    window.location.href = genericUpiLink;
-  };
 
   const handleCopyUpi = () => {
     navigator.clipboard.writeText(targetUpiId);
@@ -127,21 +119,11 @@ export function TipSection({ upiId: propUpiId }: TipSectionProps) {
           <button
             type="button"
             className={styles.secondaryBtn}
-            onClick={handleOpenOtherUpi}
-            title="Pay with other UPI apps like PhonePe, Paytm, BHIM"
-          >
-            <span>⚡</span>
-            <span>Other UPI Apps</span>
-          </button>
-
-          <button
-            type="button"
-            className={styles.secondaryBtn}
             onClick={() => setShowQR((prev) => !prev)}
-            title="Show or hide QR Code"
+            title="Show or hide Google Pay QR Code"
           >
             <span>📱</span>
-            <span>{showQR ? 'Hide QR Code' : 'Show QR Code'}</span>
+            <span>{showQR ? 'Hide GPay QR' : 'Show GPay QR'}</span>
           </button>
 
           <button
